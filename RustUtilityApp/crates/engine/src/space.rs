@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::os::darwin::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use tokio::sync::Semaphore;
 
@@ -45,28 +46,45 @@ pub fn computer_root() -> PathBuf {
 }
 
 pub async fn scan_space(root: PathBuf) -> SpaceReport {
+    let root_dev = std::fs::symlink_metadata(&root).map(|meta| meta.st_dev()).unwrap_or(0);
+    let seen = Arc::new(Mutex::new(HashSet::new()));
+    if let Ok(meta) = std::fs::symlink_metadata(&root) {
+        seen.lock().unwrap().insert((meta.st_dev(), meta.st_ino()));
+    }
     let entries: Vec<PathBuf> = match std::fs::read_dir(&root) {
         Ok(entries) => entries.flatten().map(|entry| entry.path()).collect(),
         Err(_) => Vec::new(),
     };
-    let semaphore = std::sync::Arc::new(Semaphore::new(4));
+    let semaphore = Arc::new(Semaphore::new(4));
     let mut joins = Vec::new();
     for path in entries {
         let permit = semaphore.clone();
+        let seen = Arc::clone(&seen);
         joins.push(tokio::spawn(async move {
             let _permit = permit.acquire_owned().await.ok();
             let meta = std::fs::symlink_metadata(&path).ok();
-            let is_directory = meta.as_ref().is_some_and(|meta| meta.is_dir())
+            let same_volume = meta.as_ref().is_some_and(|meta| meta.st_dev() == root_dev);
+            let is_directory = same_volume
+                && meta.as_ref().is_some_and(|meta| meta.is_dir())
                 && !meta.as_ref().is_some_and(|meta| meta.file_type().is_symlink());
             let flags = meta.as_ref().map(|meta| meta.st_flags()).unwrap_or(0);
             let cloud = cloud_status(&path, flags);
-            let bytes = if is_directory {
+            let bytes = if !same_volume {
+                0
+            } else if is_directory {
                 let path = path.clone();
-                tokio::task::spawn_blocking(move || measure_tree(&path))
+                tokio::task::spawn_blocking(move || measure_tree(&path, root_dev, &seen))
                     .await
                     .unwrap_or(0)
+            } else if let Some(meta) = meta.as_ref() {
+                let id = (meta.st_dev(), meta.st_ino());
+                if seen.lock().unwrap().insert(id) {
+                    allocated_bytes(meta)
+                } else {
+                    0
+                }
             } else {
-                meta.map(|meta| meta.len()).unwrap_or(0)
+                0
             };
             SpaceNode {
                 path,
@@ -93,11 +111,15 @@ pub async fn scan_space(root: PathBuf) -> SpaceReport {
     }
 }
 
-/// Sizes a directory without the junk-scan entry cap, and without counting the same inode twice.
-fn measure_tree(path: &Path) -> u64 {
+/// Bytes this file occupies on disk. `len()` is the logical size and counts clones and holes in full.
+fn allocated_bytes(meta: &std::fs::Metadata) -> u64 {
+    meta.st_blocks().saturating_mul(512)
+}
+
+/// Sizes one directory on `root_dev` only. The shared set stops a firmlink from being added twice.
+fn measure_tree(path: &Path, root_dev: u64, seen: &Mutex<HashSet<(u64, u64)>>) -> u64 {
     let mut total = 0u64;
     let mut stack = vec![path.to_path_buf()];
-    let mut seen = HashSet::new();
     while let Some(dir) = stack.pop() {
         let entries = match std::fs::read_dir(&dir) {
             Ok(entries) => entries,
@@ -109,17 +131,17 @@ fn measure_tree(path: &Path) -> u64 {
                 Ok(meta) => meta,
                 Err(_) => continue,
             };
-            if meta.file_type().is_symlink() {
+            if meta.file_type().is_symlink() || meta.st_dev() != root_dev {
                 continue;
             }
             let id = (meta.st_dev(), meta.st_ino());
-            if !seen.insert(id) {
+            if !seen.lock().unwrap().insert(id) {
                 continue;
             }
             if meta.is_dir() {
                 stack.push(path);
             } else {
-                total = total.saturating_add(meta.len());
+                total = total.saturating_add(allocated_bytes(&meta));
             }
         }
     }
