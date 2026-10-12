@@ -1,0 +1,78 @@
+AssistantModule.AssistantPopoverContent.view.getter : __C.NSView
+property descriptor for AssistantModule.AssistantPopoverContent.view : __C.NSView
+AssistantModule.AnnouncementViewModel.closeAnnouncement() -> ()
+AssistantModule.AnnouncementViewModel.setOnClose(() -> ()) -> ()
+AssistantModule.AnnouncementViewModel.setOnShown(() -> ()) -> ()
+AssistantModule.AnnouncementViewModel.viewHeight.getter : Swift.Int
+property descriptor for AssistantModule.AnnouncementViewModel.viewHeight : Swift.Int
+direct field offset for AssistantModule.AnnouncementViewModel.viewHeight : Swift.Int
+AssistantModule.AnnouncementViewModel.setOnOpenURL((Foundation.URL) -> ()) -> ()
+AssistantModule.AnnouncementViewModel.urlValidator.modify : ((Foundation.URL) -> Swift.Bool)?
+AssistantModule.AnnouncementViewModel.urlValidator.getter : ((Foundation.URL) -> Swift.Bool)?
+property descriptor for AssistantModule.AnnouncementViewModel.urlValidator : ((Foundation.URL) -> Swift.Bool)?
+direct field offset for AssistantModule.AnnouncementViewModel.urlValidator : ((Foundation.URL) -> Swift.Bool)?
+variable initialization expression of AssistantModule.AnnouncementViewModel.urlValidator : ((Foundation.URL) -> Swift.Bool)?
+AssistantModule.AnnouncementViewModel.urlValidator.setter : ((Foundation.URL) -> Swift.Bool)?
+AssistantModule.AnnouncementViewModel.isAcceptedURL(Foundation.URL) -> Swift.Bool
+AssistantModule.AnnouncementViewModel.shown() -> ()
+AssistantModule.AnnouncementViewModel.htmlURL.getter : Foundation.URL
+property descriptor for AssistantModule.AnnouncementViewModel.htmlURL : Foundation.URL
+direct field offset for AssistantModule.AnnouncementViewModel.htmlURL : Foundation.URL
+AssistantModule.AnnouncementViewModel.__allocating_init(htmlURL: Foundation.URL, viewWidth: Swift.Int, viewHeight: Swift.Int) -> AssistantModule.AnnouncementViewModel
+method descriptor for AssistantModule.AnnouncementViewModel.__allocating_init(htmlURL: Foundation.URL, viewWidth: Swift.Int, viewHeight: Swift.Int) -> AssistantModule.AnnouncementViewModel
+AssistantModule.AnnouncementViewModel.init(htmlURL: Foundation.URL, viewWidth: Swift.Int, viewHeight: Swift.Int) -> AssistantModule.AnnouncementViewModel
+variable initialization expression of AssistantModule.AnnouncementViewModel.(onClose in _37F3DDA01170B6F8EACADB8436B794C5) : (() -> ())?
+variable initialization expression of AssistantModule.AnnouncementViewModel.(onShown in _37F3DDA01170B6F8EACADB8436B794C5) : (() -> ())?
+AssistantModule.AnnouncementViewModel.openURL(Foundation.URL) -> ()
+variable initialization expression of AssistantModule.AnnouncementViewModel.(onOpenURL in _37F3DDA01170B6F8EACADB8436B794C5) : ((Foundation.URL) -> ())?
+AssistantModule.AnnouncementViewModel.viewWidth.getter : Swift.Int
+property descriptor for AssistantModule.AnnouncementViewModel.viewWidth : Swift.Int
+direct field offset for AssistantModule.AnnouncementViewModel.viewWidth : Swift.Int
+protocol conformance descriptor for AssistantModule.AnnouncementViewModel : AssistantModule.AnnouncementViewModelType in AssistantModule
+protocol witness table for AssistantModule.AnnouncementViewModel : AssistantModule.AnnouncementViewModelType in AssistantModule
+type metadata accessor for AssistantModule.AnnouncementViewModel
+metaclass for AssistantModule.AnnouncementViewModel
+nominal type descriptor for AssistantModule.AnnouncementViewModel
+type metadata for AssistantModule.AnnouncementViewModel
+AssistantModule.AnnouncementViewModel.__deallocating_deinit
+AssistantModule.AnnouncementViewModel.deinit
+variable initialization expression of AssistantModule.AnnouncementsPresenter.(enqueuedAnnouncements in _21831DD893B3F81AA0510C623CDE8FEF) : Swift.Set<AssistantModule.AnnouncementViewController>
+AssistantModule.AnnouncementsPresenter.presentAnnouncement(with: AssistantModule.AnnouncementViewModelType) -> ()
+variable initialization expression of AssistantModule.AnnouncementsPresenter.(announcementViewModel in _21831DD893B3F81AA0510C623CDE8FEF) : AssistantModule.AnnouncementViewModelType?
+variable initialization expression of AssistantModule.AnnouncementsPresenter.announcementWindowController : AssistantModule.AnnouncementViewController?
+protocol descriptor for AssistantModule.AnnouncementViewModelType
+protocol requirements base descriptor for AssistantModule.AnnouncementViewModelType
+AssistantModule.AnnouncementViewController.webView(_: __C.WKWebView, decidePolicyFor: __C.WKNavigationAction, decisionHandler: (__C.WKNavigationActionPolicy) -> ()) -> ()
+AssistantModule.AnnouncementViewController.setOnClose(() -> ()) -> ()
+AssistantModule.AnnouncementViewController.viewDidLoad() -> ()
+AssistantModule.AnnouncementViewController.viewDidAppear() -> ()
+AssistantModule.AnnouncementViewController.close() -> ()
+variable initialization expression of AssistantModule.AnnouncementViewController.(onClose in _D12FDA5A31BD611857FE5D1525E4B696) : (() -> ())?
+AssistantModule.AnnouncementViewController.__allocating_init(viewModel: AssistantModule.AnnouncementViewModelType) -> AssistantModule.AnnouncementViewController
+method descriptor for AssistantModule.AnnouncementViewController.__allocating_init(viewModel: AssistantModule.AnnouncementViewModelType) -> AssistantModule.AnnouncementViewController
+AssistantModule.AnnouncementViewController.init(viewModel: AssistantModule.AnnouncementViewModelType) -> AssistantModule.AnnouncementViewController
+AssistantModule.AnnouncementViewController.__allocating_init() -> AssistantModule.AnnouncementViewController
+AssistantModule.AnnouncementViewController.init() -> AssistantModule.AnnouncementViewController
+type metadata accessor for AssistantModule.AnnouncementViewController
+nominal type descriptor for AssistantModule.AnnouncementViewController
+type metadata for AssistantModule.AnnouncementViewController
+AssistantModule.AnnouncementViewController.__deallocating_deinit
+AssistantModule.HealthScoreSimulatableViewController.configureChildViewController(__C.NSViewController) -> ()
+protocol conformance descriptor for AssistantModule.HealthScoreSimulatableViewController : AssistantUI.HealthScoreViewControllerType in AssistantModule
+protocol witness table for AssistantModule.HealthScoreSimulatableViewController : AssistantUI.HealthScoreViewControllerType in AssistantModule
+variable initialization expression of AssistantModule.HealthScoreSimulatableViewController.(recentSnapshot in _A2FEFFDCBA375D4F1B681685C00DDEC5) : AssistantCore.MacStateSnapshot?
+AssistantModule.HealthScoreSimulatableViewController.didEndTransition(toExpanded: Swift.Bool) -> ()
+AssistantModule.HealthScoreSimulatableViewController.willBeginTransition(toExpanded: Swift.Bool) -> ()
+AssistantModule.HealthScoreSimulatableViewController.applyTransitionState(isExpanded: Swift.Bool) -> ()
+AssistantModule.HealthScoreSimulatableViewController.update(with: AssistantCore.MacStateSnapshot) -> ()
+AssistantModule.HealthScoreSimulatableViewController.__allocating_init(macModel: SystemUtils.MacModel, factory: (SystemUtils.MacModel) -> AssistantUI.HealthScoreViewControllerType, simulationService: AssistantDomain.HealthIndexSimulationService) -> AssistantModule.HealthScoreSimulatableViewController
+method descriptor for AssistantModule.HealthScoreSimulatableViewController.__allocating_init(macModel: SystemUtils.MacModel, factory: (SystemUtils.MacModel) -> AssistantUI.HealthScoreViewControllerType, simulationService: AssistantDomain.HealthIndexSimulationService) -> AssistantModule.HealthScoreSimulatableViewController
+AssistantModule.HealthScoreSimulatableViewController.init(macModel: SystemUtils.MacModel, factory: (SystemUtils.MacModel) -> AssistantUI.HealthScoreViewControllerType, simulationService: AssistantDomain.HealthIndexSimulationService) -> AssistantModule.HealthScoreSimulatableViewController
+AssistantModule.HealthScoreSimulatableViewController.__allocating_init(macModel: SystemUtils.MacModel, factory: (SystemUtils.MacModel) -> __C.NSViewController, simulationService: AssistantDomain.HealthIndexSimulationService) -> AssistantModule.HealthScoreSimulatableViewController
+AssistantModule.HealthScoreSimulatableViewController.init(macModel: SystemUtils.MacModel, factory: (SystemUtils.MacModel) -> __C.NSViewController, simulationService: AssistantDomain.HealthIndexSimulationService) -> AssistantModule.HealthScoreSimulatableViewController
+type metadata accessor for AssistantModule.HealthScoreSimulatableViewController
+nominal type descriptor for AssistantModule.HealthScoreSimulatableViewController
+type metadata for AssistantModule.HealthScoreSimulatableViewController
+AssistantModule.HealthScoreSimulatableViewController.__deallocating_deinit
+_OBJC_METACLASS_$_AssistantModule.AnnouncementViewController
+_OBJC_METACLASS_$_AssistantModule.HealthScoreSimulatableViewController

@@ -1,0 +1,104 @@
+SmartCareModule.CardViewModel.$state.getter : SmartCareModule.ComposedCardState
+SmartCareModule.CardViewModel.(cancellable in _BB93B0BED08FDC7547F23EC568F8C2D6).getter : Swift.Set<Combine.AnyCancellable>
+SmartCareModule.CardViewModel.(cancellable in _BB93B0BED08FDC7547F23EC568F8C2D6).modify : Swift.Set<Combine.AnyCancellable>
+SmartCareModule.CardViewModel.(cancellable in _BB93B0BED08FDC7547F23EC568F8C2D6).setter : Swift.Set<Combine.AnyCancellable>
+SmartCareModule.CardViewModel.__allocating_init(itemController: SmartCareModule.SmartCareSubModuleControllerItemType, smartCareState: Combine.AnyPublisher<SmartCareModule.SmartCareViewModelState, Swift.Never>) -> SmartCareModule.CardViewModel
+SmartCareModule.CardViewModel.__deallocating_deinit
+SmartCareModule.CardViewModel._currentState() -> SmartCareModule.ComposedCardState
+SmartCareModule.CardViewModel.deinit
+SmartCareModule.CardViewModel.isActive.getter : Swift.Bool
+SmartCareModule.CardViewModel.isColorless(Swift.Bool) -> Swift.Bool
+SmartCareModule.CardViewModel.isResultState.getter : Combine.AnyPublisher<Swift.Bool, Swift.Never>
+SmartCareModule.CardViewModel.isResultState.modify : Combine.AnyPublisher<Swift.Bool, Swift.Never>
+SmartCareModule.CardViewModel.isResultState.setter : Combine.AnyPublisher<Swift.Bool, Swift.Never>
+SmartCareModule.CardViewModel.isSelected.getter : Combine.AnyPublisher<Swift.Bool, Swift.Never>
+SmartCareModule.CardViewModel.onReview.getter : Combine.AnyPublisher<(), Swift.Never>
+SmartCareModule.CardViewModel.onShowSettings.getter : Combine.AnyPublisher<(), Swift.Never>
+SmartCareModule.CardViewModel.onUnlock.getter : Combine.AnyPublisher<(), Swift.Never>
+SmartCareModule.CardViewModel.state.getter : Combine.AnyPublisher<SmartCareModule.ComposedCardState, Swift.Never>
+SmartCareModule.SmartCareIntroViewModel.$buttonConfigurationPublisher.getter : ModuleCore.IntroButtonConfiguration
+SmartCareModule.SmartCareIntroViewModel.__allocating_init(appUsageStatisticsService: StatisticsService.AppUsageStatisticsType, imageFactory: SmartCareModule.SmartCareModuleImageFactory, moduleColor: Swift.Int, holidayDetector: ModuleCore.HolidayDetectorType) -> SmartCareModule.SmartCareIntroViewModel
+SmartCareModule.SmartCareIntroViewModel.__deallocating_deinit
+SmartCareModule.SmartCareIntroViewModel.buttonConfigurationPublisher.getter : Combine.AnyPublisher<ModuleCore.IntroButtonConfiguration, Swift.Never>
+SmartCareModule.SmartCareIntroViewModel.categories.getter : [ModuleCore.IntroCategoryItem]
+SmartCareModule.SmartCareIntroViewModel.deinit
+SmartCareModule.SmartCareIntroViewModel.description.getter : Swift.String
+SmartCareModule.SmartCareIntroViewModel.init(appUsageStatisticsService: StatisticsService.AppUsageStatisticsType, imageFactory: SmartCareModule.SmartCareModuleImageFactory, moduleColor: Swift.Int, holidayDetector: ModuleCore.HolidayDetectorType) -> SmartCareModule.SmartCareIntroViewModel
+SmartCareModule.SmartCareIntroViewModel.moduleColor.getter : Swift.Int
+SmartCareModule.SmartCareIntroViewModel.moduleIconPublisher.getter : Combine.AnyPublisher<SharedUI.ImageSequence, Swift.Never>
+SmartCareModule.SmartCareIntroViewModel.reset() -> ()
+SmartCareModule.SmartCareIntroViewModel.showNewLabel.getter : Swift.Bool
+SmartCareModule.SmartCareIntroViewModel.start() -> ()
+SmartCareModule.SmartCareIntroViewModel.title.getter : Swift.String
+SmartCareModule.SmartCareIntroViewModel.updateButtonConfiguration(ModuleCore.IntroButtonConfiguration) -> ()
+SmartCareModule.SmartCareIntroViewModel.updateDescription(newValue: () -> Swift.String) -> ()
+SmartCareModule.SmartCareModuleController.__deallocating_deinit
+SmartCareModule.SmartCareModuleController.cleanProgress.getter : Combine.AnyPublisher<ModuleCore.CleanProgress, Swift.Never>
+SmartCareModule.SmartCareModuleController.deinit
+SmartCareModule.SmartCareModuleController.idle() -> ()
+SmartCareModule.SmartCareModuleController.pauseClean() -> ()
+SmartCareModule.SmartCareModuleController.pauseScan() -> ()
+SmartCareModule.SmartCareModuleController.progress.getter : Combine.AnyPublisher<ScanningCore.ScanProgress, Swift.Never>
+SmartCareModule.SmartCareModuleController.resumeClean() -> ()
+SmartCareModule.SmartCareModuleController.resumeScan() -> ()
+SmartCareModule.SmartCareModuleController.setCleanCancelledState() -> ()
+SmartCareModule.SmartCareModuleController.setScanCancelledState() -> ()
+SmartCareModule.SmartCareModuleController.startClean() -> Combine.AnyPublisher<SmartCareModule.SmartCareModuleCleanResult, ModuleCore.ModuleCleanError>
+SmartCareModule.SmartCareModuleController.startScan() -> Combine.AnyPublisher<SmartCareModule.SmartCareModuleScanResult, ModuleCore.ModuleScanError>
+SmartCareModule.SmartCareModuleController.stopClean() -> ()
+SmartCareModule.SmartCareModuleController.stopScan() -> ()
+SmartCareModule.SmartCareModuleCoordinator.__allocating_init(introScreenFactory: ModuleCore.IntroScreenFactoryType, mainFlowFactory: ModuleCore.MainFlowFactoryType, showScanningSettings: () -> (), alerter: SmartCareModule.SmartCareAlerterType, sandboxAccessProviders: [ModuleCore.FileSystemAccessProviderType]) -> SmartCareModule.SmartCareModuleCoordinator
+SmartCareModule.SmartCareModuleCoordinator.__allocating_init(uiConfiguration: ModuleCore.ModuleUIConfiguration, identifier: ModuleCore.ScanModuleIdentifier, introFactory: ModuleCore.IntroScreenFactoryType, mainFlowFactory: ModuleCore.MainFlowFactoryType, notificationHandler: ModuleCore.ModuleNotificationHandlerType?, modalSheetPresenter: SharedUI.ModalSheetPresenterType, soundPlayer: SharedUtils.SoundPlayerType?) -> SmartCareModule.SmartCareModuleCoordinator
+SmartCareModule.SmartCareModuleCoordinator.customTransition(from: ModuleCore.ModuleScreensNavigator.Screen, to: ModuleCore.ModuleScreensNavigator.Screen, operation: NavigationUI.NavigationControllerOperation) -> NavigationUI.NavigationControllerTransitioning?
+SmartCareModule.SmartCareModuleCoordinator.init(introScreenFactory: ModuleCore.IntroScreenFactoryType, mainFlowFactory: ModuleCore.MainFlowFactoryType, showScanningSettings: () -> (), alerter: SmartCareModule.SmartCareAlerterType, sandboxAccessProviders: [ModuleCore.FileSystemAccessProviderType]) -> SmartCareModule.SmartCareModuleCoordinator
+SmartCareModule.SmartCareModuleCoordinator.init(uiConfiguration: ModuleCore.ModuleUIConfiguration, identifier: ModuleCore.ScanModuleIdentifier, introFactory: ModuleCore.IntroScreenFactoryType, mainFlowFactory: ModuleCore.MainFlowFactoryType, notificationHandler: ModuleCore.ModuleNotificationHandlerType?, modalSheetPresenter: SharedUI.ModalSheetPresenterType, soundPlayer: SharedUtils.SoundPlayerType?) -> SmartCareModule.SmartCareModuleCoordinator
+SmartCareModule.SmartCareScreenCoordinator.__allocating_init(viewController: __C.NSViewController) -> SmartCareModule.SmartCareScreenCoordinator
+SmartCareModule.SmartCareScreenCoordinator.__deallocating_deinit
+SmartCareModule.SmartCareScreenCoordinator.deinit
+SmartCareModule.SmartCareScreenCoordinator.delegate.getter : SmartCareModule.SmartCareScreenCoordinatorDelegate?
+SmartCareModule.SmartCareScreenCoordinator.delegate.modify : SmartCareModule.SmartCareScreenCoordinatorDelegate?
+SmartCareModule.SmartCareScreenCoordinator.delegate.setter : SmartCareModule.SmartCareScreenCoordinatorDelegate?
+SmartCareModule.SmartCareScreenCoordinator.init(viewController: __C.NSViewController) -> SmartCareModule.SmartCareScreenCoordinator
+SmartCareModule.SmartCareScreenCoordinator.mainComponentsUIStateStartingFrom(ModuleCore.MainUIComponentsState) -> Combine.AnyPublisher<ModuleCore.MainUIComponentsState, Swift.Never>
+SmartCareModule.SmartCareScreenCoordinator.performBackAction() -> ()
+SmartCareModule.SmartCareScreenCoordinator.performMainAction() -> ()
+SmartCareModule.SmartCareScreensFactory.__deallocating_deinit
+SmartCareModule.SmartCareScreensFactory.deinit
+SmartCareModule.SmartCareScreensFactory.makeDataManagerScreenCoordinator(delegate: SmartCareModule.SmartCareDataManagerScreenCoordinatorDelegate, for: SmartCareModule.SmartCareModuleController, at: Swift.Int) -> ModuleCore.ModuleScreenCoordinatorType?
+SmartCareModule.SmartCareScreensFactory.makeSmartCareScreenCoordinator(delegate: SmartCareModule.SmartCareScreenCoordinatorDelegate, for: SmartCareModule.SmartCareModuleController, statistics: StatisticsService.ScanningModuleTrackerType, lockedCleaningFunctionality: ModuleCore.LockedFunctionalityPerformerType) -> ModuleCore.ModuleScreenCoordinatorType
+SmartCareModule.SmartCareScreensFactory.makeViewLogScreenCoordinator(delegate: SmartCareModule.SmartCareViewLogScreenCoordinatorDelegate, items: [ModuleCore.CleanItemViewModel]) -> ModuleCore.ModuleScreenCoordinatorType?
+SmartCareModule.SmartCareViewModelState.hash(into: inout Swift.Hasher) -> ()
+SmartCareModule.SmartCareViewModelState.hashValue.getter : Swift.Int
+SmartCareModule.UserInteractableCardViewModel.(_isUserInteracted in _BC28AFC04A7D3C4E8D8F346783DB5972).getter : Swift.Bool
+SmartCareModule.UserInteractableCardViewModel.(_isUserInteracted in _BC28AFC04A7D3C4E8D8F346783DB5972).modify : Swift.Bool
+SmartCareModule.UserInteractableCardViewModel.(_isUserInteracted in _BC28AFC04A7D3C4E8D8F346783DB5972).setter : Swift.Bool
+SmartCareModule.UserInteractableCardViewModel.__allocating_init(itemController: SmartCareModule.SmartCareSubModuleControllerItemType, smartCareState: Combine.AnyPublisher<SmartCareModule.SmartCareViewModelState, Swift.Never>) -> SmartCareModule.UserInteractableCardViewModel
+SmartCareModule.UserInteractableCardViewModel.__deallocating_deinit
+SmartCareModule.UserInteractableCardViewModel.deinit
+SmartCareModule.UserInteractableCardViewModel.isUserInteracted.getter : Swift.Bool
+SmartCareModule.UserInteractableCardViewModel.userInteract() -> ()
+direct field offset for SmartCareModule.SmartCareIntroViewModel.categories : [ModuleCore.IntroCategoryItem]
+direct field offset for SmartCareModule.SmartCareIntroViewModel.moduleColor : Swift.Int
+direct field offset for SmartCareModule.SmartCareIntroViewModel.showNewLabel : Swift.Bool
+direct field offset for SmartCareModule.SmartCareScreenCoordinator.delegate : SmartCareModule.SmartCareScreenCoordinatorDelegate?
+metaclass for SmartCareModule.CardViewModel
+metaclass for SmartCareModule.SmartCareIntroViewModel
+metaclass for SmartCareModule.SmartCareModuleController
+metaclass for SmartCareModule.SmartCareScreenCoordinator
+metaclass for SmartCareModule.SmartCareScreensFactory
+metaclass for SmartCareModule.UserInteractableCardViewModel
+static SmartCareModule.SmartCareViewModelState.__derived_enum_equals(SmartCareModule.SmartCareViewModelState, SmartCareModule.SmartCareViewModelState) -> Swift.Bool
+variable initialization expression of SmartCareModule.CardViewModel.(_onReview in _BB93B0BED08FDC7547F23EC568F8C2D6) : CombineUtils.PassthroughPublished<(), Swift.Never>
+variable initialization expression of SmartCareModule.CardViewModel.(_onShowSettings in _BB93B0BED08FDC7547F23EC568F8C2D6) : CombineUtils.PassthroughPublished<(), Swift.Never>
+variable initialization expression of SmartCareModule.CardViewModel.(_onUnlock in _BB93B0BED08FDC7547F23EC568F8C2D6) : CombineUtils.PassthroughPublished<(), Swift.Never>
+variable initialization expression of SmartCareModule.CardViewModel.(_state in _BB93B0BED08FDC7547F23EC568F8C2D6) : CombineUtils.CurrentValuePublished<SmartCareModule.ComposedCardState, Swift.Never>
+variable initialization expression of SmartCareModule.CardViewModel.(cancellable in _BB93B0BED08FDC7547F23EC568F8C2D6) : Swift.Set<Combine.AnyCancellable>
+variable initialization expression of SmartCareModule.SmartCareIntroViewModel.(_buttonConfigurationPublisher in _65E0FB8FA7841B3D60C8AC876064A141) : CombineUtils.CurrentValuePublished<ModuleCore.IntroButtonConfiguration, Swift.Never>
+variable initialization expression of SmartCareModule.SmartCareIntroViewModel.(cancellables in _65E0FB8FA7841B3D60C8AC876064A141) : Swift.Set<Combine.AnyCancellable>
+variable initialization expression of SmartCareModule.SmartCareIntroViewModel.categories : [ModuleCore.IntroCategoryItem]
+variable initialization expression of SmartCareModule.SmartCareIntroViewModel.showNewLabel : Swift.Bool
+variable initialization expression of SmartCareModule.SmartCareModuleController.(analyticsCancellables in _71C2305B3DC1D2FA12DD9A050E0AA2C9) : Swift.Set<Combine.AnyCancellable>
+variable initialization expression of SmartCareModule.SmartCareModuleController.delegate : SmartCareModule.SmartCareModuleControllerDelegate?
+variable initialization expression of SmartCareModule.SmartCareScreenCoordinator.(cancellables in _C8D6230536FB9A5D80F0B6434B428CE9) : Swift.Set<Combine.AnyCancellable>
+variable initialization expression of SmartCareModule.SmartCareScreenCoordinator.delegate : SmartCareModule.SmartCareScreenCoordinatorDelegate?
+variable initialization expression of SmartCareModule.UserInteractableCardViewModel.(_isUserInteracted in _BC28AFC04A7D3C4E8D8F346783DB5972) : Swift.Bool

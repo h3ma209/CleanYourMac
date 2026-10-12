@@ -32,6 +32,9 @@ pub struct ModuleResult {
 pub struct CareReport {
     pub modules: Vec<ModuleResult>,
     pub access: AccessStatus,
+    pub cleanup_bytes: u64,
+    pub app_count: usize,
+    pub agent_count: usize,
 }
 
 /// Fan-out across cleanup, protection access, performance, and applications.
@@ -57,6 +60,9 @@ pub async fn run_care(home: PathBuf) -> CareReport {
     let access = folder_access(Path::new("/Library/Application Support"));
     CareReport {
         access,
+        cleanup_bytes: cache_bytes,
+        app_count: apps.len(),
+        agent_count: agents.len(),
         modules: vec![
             ModuleResult {
                 name: "Cleanup".into(),

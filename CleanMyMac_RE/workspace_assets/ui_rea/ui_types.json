@@ -1,0 +1,171 @@
+{
+  "MainAppUI": {
+    "types": [
+      "MainAppUI.AboutViewController",
+      "MainAppUI.AboutViewModel",
+      "MainAppUI.AcknowledgmentsViewController",
+      "MainAppUI.AcknowledgmentsViewModel",
+      "MainAppUI.CanvasViewController",
+      "MainAppUI.CanvasViewModel",
+      "MainAppUI.CreditsViewModel",
+      "MainAppUI.GeneralAboutViewModel",
+      "MainAppUI.MainWindow",
+      "MainAppUI.MainWindowContainerOverlayPresenter",
+      "MainAppUI.MainWindowContainerViewController",
+      "MainAppUI.ModuleViewController",
+      "MainAppUI.ModuleViewModel",
+      "MainAppUI.NavigationBarViewController",
+      "MainAppUI.NavigationBarViewModel",
+      "MainAppUI.SidebarTableCellViewModel",
+      "MainAppUI.SidebarViewController",
+      "MainAppUI.SidebarViewModel",
+      "MainAppUI.StandWithUkraineViewModel",
+      "NavigationUI.TransitionViewController",
+      "NotificationsUI.NotificationsHeaderViewController",
+      "UbiquitousButtonUI.UbiquitousButtonWindow",
+      "__C.NSScreen",
+      "__C.NSTitlebarAccessoryViewController",
+      "__C.NSViewController",
+      "__C.NSWindow"
+    ],
+    "inits": [
+      "MainAppUI.AboutViewController.init(viewModel: MainAppUI.AboutViewModel) -> MainAppUI.AboutViewController",
+      "MainAppUI.AcknowledgmentsViewController.init(viewModel: MainAppUI.AcknowledgmentsViewModel) -> MainAppUI.AcknowledgmentsViewController",
+      "MainAppUI.CanvasViewController.init(viewModel: MainAppUI.CanvasViewModel) -> MainAppUI.CanvasViewController",
+      "MainAppUI.MainWindowContainerViewController.init(navigationBarViewController: __C.NSViewController, sidebarViewController: __C.NSViewController & MainAppUI.IsHoverableViewControllerType, moduleViewController: __C.NSViewController, canvasViewController: __C.NSViewController) -> Ma",
+      "MainAppUI.ModuleViewController.init(viewModel: MainAppUI.ModuleViewModelType, controllers: [__C.NSViewController], overlayControllers: [__C.NSViewController]) -> MainAppUI.ModuleViewController",
+      "MainAppUI.NavigationBarViewController.init(viewModel: MainAppUI.NavigationBarViewModelType, imageLoader: NotificationsUI.ImageLoader) -> MainAppUI.NavigationBarViewController",
+      "MainAppUI.SidebarViewController.init(viewModel: MainAppUI.SidebarViewModel, sidebarBadgeStateProvider: (MainAppUI.SidebarSectionID, Swift.Int) -> Combine.AnyPublisher<MainAppUI.SidebarRenderingState?, Swift.Never>, sidebarNewLabelProvider: (MainAppUI.SidebarSectionID, Swift.Int) "
+    ]
+  },
+  "NavigationUI": {
+    "types": [
+      "NavigationUI.TransitionViewController",
+      "__C.NSViewController"
+    ],
+    "inits": [
+      "NavigationUI.NavigationControllerContextTransitioning.init(fromViewController: __C.NSViewController?, toViewController: __C.NSViewController, containerView: __C.NSView, animated: Swift.Bool) -> NavigationUI.NavigationControllerContextTransitioning"
+    ]
+  },
+  "JunkCleanupModule": {
+    "types": [
+      "JunkCleanupModule.JunkCleanupModuleCoordinator"
+    ],
+    "inits": [
+      "JunkCleanupModule.JunkCleanupModuleCoordinator.init(uiConfiguration: ModuleCore.ModuleUIConfiguration, identifier: ModuleCore.ScanModuleIdentifier, introFactory: ModuleCore.IntroScreenFactoryType, mainFlowFactory: ModuleCore.MainFlowFactoryType, notificationHandler: ModuleCore.Mo"
+    ]
+  },
+  "ProtectionModule": {
+    "types": [
+      "ProtectionModule.MoonlockDescriptionViewController",
+      "ProtectionModule.MoonlockDescriptionViewModel"
+    ],
+    "inits": [
+      "ProtectionModule.MoonlockDescriptionViewController.init(viewModel: ProtectionModule.MoonlockDescriptionViewModel) -> ProtectionModule.MoonlockDescriptionViewController"
+    ]
+  },
+  "PerformanceModule": {
+    "types": [],
+    "inits": []
+  },
+  "SmartCareModule": {
+    "types": [
+      "SmartCareModule.CardViewModel",
+      "SmartCareModule.SmartCareIntroViewModel",
+      "SmartCareModule.SmartCareModuleCoordinator",
+      "SmartCareModule.SmartCareScreenCoordinator",
+      "SmartCareModule.UserInteractableCardViewModel",
+      "__C.NSViewController"
+    ],
+    "inits": [
+      "SmartCareModule.SmartCareModuleCoordinator.init(uiConfiguration: ModuleCore.ModuleUIConfiguration, identifier: ModuleCore.ScanModuleIdentifier, introFactory: ModuleCore.IntroScreenFactoryType, mainFlowFactory: ModuleCore.MainFlowFactoryType, notificationHandler: ModuleCore.Module"
+    ]
+  },
+  "SpaceLensModule": {
+    "types": [
+      "SpaceLensModule.SpaceLensModuleCoordinator"
+    ],
+    "inits": [
+      "SpaceLensModule.SpaceLensModuleCoordinator.init(uiConfiguration: ModuleCore.ModuleUIConfiguration, identifier: ModuleCore.ScanModuleIdentifier, introFactory: ModuleCore.IntroScreenFactoryType, mainFlowFactory: ModuleCore.MainFlowFactoryType, notificationHandler: ModuleCore.Module"
+    ]
+  },
+  "ApplicationsModule": {
+    "types": [
+      "__C.NSViewController"
+    ],
+    "inits": []
+  },
+  "CloudStorageModule": {
+    "types": [
+      "CloudStorageModule.CloudStorageScanSummaryViewModel",
+      "CloudStorageModule.CloudStorageSummaryItemViewModel"
+    ],
+    "inits": []
+  },
+  "AssistantModule": {
+    "types": [
+      "AssistantModule.AnnouncementViewController",
+      "AssistantModule.AnnouncementViewModel",
+      "AssistantModule.AnnouncementsPresenter",
+      "AssistantModule.HealthScoreSimulatableViewController",
+      "__C.NSViewController"
+    ],
+    "inits": [
+      "AssistantModule.AnnouncementViewController.init(viewModel: AssistantModule.AnnouncementViewModelType) -> AssistantModule.AnnouncementViewController"
+    ]
+  },
+  "EmailCleanupModule": {
+    "types": [
+      "EmailCleanupModule.EmailCleanerCardViewController",
+      "EmailCleanupModule.EmailCleanerCardViewModel"
+    ],
+    "inits": [
+      "EmailCleanupModule.EmailCleanerCardViewController.init(viewModel: EmailCleanupModule.EmailCleanerCardViewModel) -> EmailCleanupModule.EmailCleanerCardViewController"
+    ]
+  },
+  "OrganizeModule": {
+    "types": [
+      "OrganizeModule.MediaGalleryMetadataRowViewModel",
+      "OrganizeModule.MediaGalleryMetadataViewController",
+      "OrganizeModule.MediaGalleryPreviewViewController",
+      "OrganizeModule.MediaGallerySelectControlViewController",
+      "OrganizeModule.MediaGalleryViewController",
+      "__C.NSMenu"
+    ],
+    "inits": [
+      "OrganizeModule.MediaGalleryViewController.init(viewModel: ModuleCore.DetailsViewModelType, contextMenuBuilder: ModuleCore.ContextMenuBuilder) -> OrganizeModule.MediaGalleryViewController"
+    ]
+  },
+  "ToolboxModule": {
+    "types": [
+      "ModuleCore.ScanningModuleCoordinator",
+      "ToolboxModule.ToolboxIntroItemViewModel",
+      "__C.NSViewController"
+    ],
+    "inits": []
+  },
+  "SharedUI": {
+    "types": [
+      "SharedUI.CollectionViewController",
+      "SharedUI.FluxBackgroundViewModel",
+      "SharedUI.GlassBackgroundViewModel",
+      "SharedUI.HUDViewController",
+      "SharedUI.ImageSequenceViewModel",
+      "SharedUI.ListViewController",
+      "SharedUI.ModalContainerViewController",
+      "SharedUI.MouseTrackingBlockingViewController",
+      "SharedUI.NiblessViewController",
+      "SharedUI.QuickLookViewController",
+      "SharedUI.SizeSegmentsViewModel",
+      "SharedUI.SpotlightOverlayViewModel",
+      "SharedUI.SpotlightPresenter",
+      "__C.NSViewController",
+      "__C.NSWindow"
+    ],
+    "inits": [
+      "SharedUI.FluxBackground.init(viewModel: SharedUI.FluxBackgroundViewModel, cornerRadius: CoreGraphics.CGFloat) -> SharedUI.FluxBackground",
+      "SharedUI.GlassBackgroundView.init(viewModel: SharedUI.GlassBackgroundViewModel) -> SharedUI.GlassBackgroundView",
+      "SharedUI.ModalContainerViewController.init(contentViewController: __C.NSViewController, config: SharedUI.ModalContainerConfig) -> SharedUI.ModalContainerViewController"
+    ]
+  }
+}

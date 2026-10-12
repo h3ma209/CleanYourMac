@@ -1,0 +1,58 @@
+EmailCleanupModule.EmailCleanerCardViewController.__allocating_init() -> EmailCleanupModule.EmailCleanerCardViewController
+EmailCleanupModule.EmailCleanerCardViewController.__allocating_init(viewModel: EmailCleanupModule.EmailCleanerCardViewModel) -> EmailCleanupModule.EmailCleanerCardViewController
+EmailCleanupModule.EmailCleanerCardViewController.__deallocating_deinit
+EmailCleanupModule.EmailCleanerCardViewController.init() -> EmailCleanupModule.EmailCleanerCardViewController
+EmailCleanupModule.EmailCleanerCardViewController.init(viewModel: EmailCleanupModule.EmailCleanerCardViewModel) -> EmailCleanupModule.EmailCleanerCardViewController
+EmailCleanupModule.EmailCleanerCardViewController.viewDidLoad() -> ()
+EmailCleanupModule.EmailCleanerCardViewModel.$isBadgeVisible.getter : Combine.Published<Swift.Bool>.Publisher
+EmailCleanupModule.EmailCleanerCardViewModel.$state.getter : Combine.Published<EmailCleanupModuleDomain.EmailCleanerCardState>.Publisher
+EmailCleanupModule.EmailCleanerCardViewModel.$wasScannedToday.getter : Combine.Published<Swift.Bool>.Publisher
+EmailCleanupModule.EmailCleanerCardViewModel.__allocating_init(registry: EmailCleanupModuleDomain.AccountsRegistry, preferences: EmailCleanupModule.EmailCleanupPreferencesType, eventPublisher: Combine.AnyPublisher<EmailCleanupModuleDomain.EmailCleanupDomainEvent, Swift.Never>, now: () -> Foundation.Date, calendar: Foundation.Calendar, dayChangePublisher: Combine.AnyPublisher<(), Swift.Never>) -> EmailCleanupModule.EmailCleanerCardViewModel
+EmailCleanupModule.EmailCleanerCardViewModel.__deallocating_deinit
+EmailCleanupModule.EmailCleanerCardViewModel.deinit
+EmailCleanupModule.EmailCleanerCardViewModel.init(registry: EmailCleanupModuleDomain.AccountsRegistry, preferences: EmailCleanupModule.EmailCleanupPreferencesType, eventPublisher: Combine.AnyPublisher<EmailCleanupModuleDomain.EmailCleanupDomainEvent, Swift.Never>, now: () -> Foundation.Date, calendar: Foundation.Calendar, dayChangePublisher: Combine.AnyPublisher<(), Swift.Never>) -> EmailCleanupModule.EmailCleanerCardViewModel
+EmailCleanupModule.EmailCleanerCardViewModel.isBadgeVisible.getter : Swift.Bool
+EmailCleanupModule.EmailCleanerCardViewModel.onConnect.getter : (() -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.onConnect.modify : (() -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.onConnect.setter : (() -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.onDropdownConnect.getter : (() -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.onDropdownConnect.modify : (() -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.onDropdownConnect.setter : (() -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.onManage.getter : (() -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.onManage.modify : (() -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.onManage.setter : (() -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.onScan.getter : (() -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.onScan.modify : (() -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.onScan.setter : (() -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.onSelectAccount.getter : ((Swift.String) -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.onSelectAccount.modify : ((Swift.String) -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.onSelectAccount.setter : ((Swift.String) -> ())?
+EmailCleanupModule.EmailCleanerCardViewModel.refresh() -> ()
+EmailCleanupModule.EmailCleanerCardViewModel.state.getter : EmailCleanupModuleDomain.EmailCleanerCardState
+EmailCleanupModule.EmailCleanerCardViewModel.wasScannedToday.getter : Swift.Bool
+EmailCleanupModule.EmailCleanupAnalyticsTracker.trackLogScreenDone() -> ()
+EmailCleanupModule.EmailCleanupAnalyticsTracker.trackLogScreenReviewRemainingItems() -> ()
+EmailCleanupModule.EmailCleanupModuleBuilder.makeCardViewController() -> EmailCleanupModule.EmailCleanerCardViewController
+EmailCleanupModule.EmailCleanupModuleBuilder.makeFlowCoordinator(for: SharedUtils.Tagged<ModuleCore.FlowIDTag, Swift.String>, navigator: ModuleCore.ModuleScreensNavigator, delegate: ModuleCore.FlowCoordinatorDelegate, scanLocationURL: Foundation.URL?) -> ModuleCore.FlowCoordinatorType?
+_$s18EmailCleanupModule0A20CleanerCardViewModelC14isBadgeVisibleSbvpfF
+_$s18EmailCleanupModule0A20CleanerCardViewModelC15wasScannedTodaySbvpfF
+_$s18EmailCleanupModule0A20CleanerCardViewModelC5state0abC6Domain0adE5StateOvpfF
+_OBJC_METACLASS_$__TtC18EmailCleanupModule30EmailCleanerCardViewController
+direct field offset for EmailCleanupModule.EmailCleanerCardViewModel.onConnect : (() -> ())?
+direct field offset for EmailCleanupModule.EmailCleanerCardViewModel.onDropdownConnect : (() -> ())?
+direct field offset for EmailCleanupModule.EmailCleanerCardViewModel.onManage : (() -> ())?
+direct field offset for EmailCleanupModule.EmailCleanerCardViewModel.onScan : (() -> ())?
+direct field offset for EmailCleanupModule.EmailCleanerCardViewModel.onSelectAccount : ((Swift.String) -> ())?
+metaclass for EmailCleanupModule.EmailCleanerCardViewModel
+property wrapper backing initializer of EmailCleanupModule.EmailCleanerCardViewModel.isBadgeVisible : Swift.Bool
+property wrapper backing initializer of EmailCleanupModule.EmailCleanerCardViewModel.state : EmailCleanupModuleDomain.EmailCleanerCardState
+property wrapper backing initializer of EmailCleanupModule.EmailCleanerCardViewModel.wasScannedToday : Swift.Bool
+variable initialization expression of EmailCleanupModule.EmailCleanerCardViewController.(cancellables in _EA7440FC398DC9020CC0A6426EBD741F) : Swift.Set<Combine.AnyCancellable>
+variable initialization expression of EmailCleanupModule.EmailCleanerCardViewModel.(_wasScannedToday in _DBE8B14C42C1E100C41F779CD4183BAD) : Combine.Published<Swift.Bool>
+variable initialization expression of EmailCleanupModule.EmailCleanerCardViewModel.(cancellables in _DBE8B14C42C1E100C41F779CD4183BAD) : Swift.Set<Combine.AnyCancellable>
+variable initialization expression of EmailCleanupModule.EmailCleanerCardViewModel.(lastScanDate in _DBE8B14C42C1E100C41F779CD4183BAD) : Foundation.Date?
+variable initialization expression of EmailCleanupModule.EmailCleanerCardViewModel.onConnect : (() -> ())?
+variable initialization expression of EmailCleanupModule.EmailCleanerCardViewModel.onDropdownConnect : (() -> ())?
+variable initialization expression of EmailCleanupModule.EmailCleanerCardViewModel.onManage : (() -> ())?
+variable initialization expression of EmailCleanupModule.EmailCleanerCardViewModel.onScan : (() -> ())?
+variable initialization expression of EmailCleanupModule.EmailCleanerCardViewModel.onSelectAccount : ((Swift.String) -> ())?

@@ -7,6 +7,8 @@ mod access;
 mod apps;
 mod care;
 mod cleanup;
+mod cloud;
+mod clutter;
 mod control;
 mod detect;
 mod enumerate;
@@ -20,7 +22,11 @@ mod space;
 pub use access::{folder_access, AccessStatus};
 pub use apps::{installed_apps, survey_leftovers, InstalledApp, LeftoverHit};
 pub use care::{run_care, CareReport, CareState, ModuleResult};
-pub use cleanup::{directory_size, junk_candidates, junk_roots, move_root_to_trash, JunkRoot};
+pub use cleanup::{
+    directory_size, junk_candidates, junk_roots, move_download_to_trash, move_root_to_trash, JunkRoot,
+};
+pub use cloud::{local_cloud_folders, CloudFolder};
+pub use clutter::{large_downloads, LargeFile};
 pub use control::ExecutionControl;
 pub use detect::{Detector, ExtensionWatchDetector, MetadataDetector};
 pub use enumerate::{walk, Chunk, WalkOptions};
@@ -32,7 +38,7 @@ pub use performance::{
 };
 pub use remove::{RemovalPlan, RemoveTask};
 pub use scan::{run_scan, ScanConfig};
-pub use space::{scan_space, SpaceNode, SpaceReport};
+pub use space::{computer_root, is_spared, scan_space, trash_selected, CloudStatus, SpaceNode, SpaceReport};
 
 #[cfg(test)]
 mod tests {
@@ -118,6 +124,19 @@ mod tests {
     fn trash_refuses_paths_outside_cache_roots() {
         let err = move_root_to_trash(std::path::Path::new("/tmp"), std::path::Path::new("/etc")).unwrap_err();
         assert!(err.contains("surveyed"));
+    }
+
+    #[test]
+    fn space_spares_directories_and_system_paths() {
+        let home = std::path::Path::new("/Users/example");
+        assert!(is_spared(std::path::Path::new("/System/Library"), home));
+        assert!(is_spared(home.join("Library/Caches").as_path(), home));
+    }
+
+    #[test]
+    fn download_trash_refuses_the_downloads_folder() {
+        let err = move_download_to_trash(std::path::Path::new("/tmp"), std::path::Path::new("/tmp/Downloads")).unwrap_err();
+        assert!(err.contains("Downloads"));
     }
 
     #[test]

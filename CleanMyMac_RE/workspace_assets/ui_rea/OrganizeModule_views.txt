@@ -1,0 +1,76 @@
+variable initialization expression of OrganizeModule.MediaGalleryView.navigationView : __C.NSView
+variable initialization expression of OrganizeModule.MediaGalleryView.selectControlView : __C.NSView
+variable initialization expression of OrganizeModule.MediaGalleryView.previewView : __C.NSView
+variable initialization expression of OrganizeModule.MediaGalleryPreviewView.metadataView : __C.NSView
+OrganizeModule.MediaGalleryViewController.mediaGalleryPreviewViewController(_: OrganizeModule.MediaGalleryPreviewViewController, didRequestContextMenuForNode: NodesCore.Node, selectedNodes: [NodesCore.Node]) -> __C.NSMenu?
+OrganizeModule.MediaGalleryViewController.mediaGalleryPreviewViewController(_: OrganizeModule.MediaGalleryPreviewViewController, didRequestForceClickActionForNode: NodesCore.Node) -> ()
+OrganizeModule.MediaGalleryViewController.viewDidLoad() -> ()
+variable initialization expression of OrganizeModule.MediaGalleryViewController.(cancellables in _BC6F5D9E64FA152BCB7C7BD072AD634B) : Swift.Set<Combine.AnyCancellable>
+protocol conformance descriptor for OrganizeModule.MediaGalleryViewController : DataManagerUI.DataManagerColumnLayoutRepresentable in OrganizeModule
+protocol witness table for OrganizeModule.MediaGalleryViewController : DataManagerUI.DataManagerColumnLayoutRepresentable in OrganizeModule
+OrganizeModule.MediaGalleryViewController.contextMenuBuilder.getter : ModuleCore.ContextMenuBuilder
+property descriptor for OrganizeModule.MediaGalleryViewController.contextMenuBuilder : ModuleCore.ContextMenuBuilder
+direct field offset for OrganizeModule.MediaGalleryViewController.contextMenuBuilder : ModuleCore.ContextMenuBuilder
+OrganizeModule.MediaGalleryViewController.dataManagerColumnLayout(for: Swift.Int) -> DataManagerUI.DataManagerColumnLayout
+protocol conformance descriptor for OrganizeModule.MediaGalleryViewController : SharedUI.QuickLookViewControllerDependent in OrganizeModule
+protocol witness table for OrganizeModule.MediaGalleryViewController : SharedUI.QuickLookViewControllerDependent in OrganizeModule
+OrganizeModule.MediaGalleryViewController.__allocating_init(viewModel: ModuleCore.DetailsViewModelType, contextMenuBuilder: ModuleCore.ContextMenuBuilder) -> OrganizeModule.MediaGalleryViewController
+method descriptor for OrganizeModule.MediaGalleryViewController.__allocating_init(viewModel: ModuleCore.DetailsViewModelType, contextMenuBuilder: ModuleCore.ContextMenuBuilder) -> OrganizeModule.MediaGalleryViewController
+OrganizeModule.MediaGalleryViewController.init(viewModel: ModuleCore.DetailsViewModelType, contextMenuBuilder: ModuleCore.ContextMenuBuilder) -> OrganizeModule.MediaGalleryViewController
+protocol conformance descriptor for OrganizeModule.MediaGalleryViewController : OrganizeModule.MediaGalleryPreviewViewControllerDelegate in OrganizeModule
+protocol witness table for OrganizeModule.MediaGalleryViewController : OrganizeModule.MediaGalleryPreviewViewControllerDelegate in OrganizeModule
+OrganizeModule.MediaGalleryViewController.__allocating_init() -> OrganizeModule.MediaGalleryViewController
+OrganizeModule.MediaGalleryViewController.init() -> OrganizeModule.MediaGalleryViewController
+type metadata accessor for OrganizeModule.MediaGalleryViewController
+nominal type descriptor for OrganizeModule.MediaGalleryViewController
+type metadata for OrganizeModule.MediaGalleryViewController
+OrganizeModule.MediaGalleryViewController.__deallocating_deinit
+OrganizeModule.MediaGalleryMetadataRowViewModel.description.getter : [Swift.String]
+property descriptor for OrganizeModule.MediaGalleryMetadataRowViewModel.description : [Swift.String]
+static OrganizeModule.MediaGalleryMetadataRowViewModel.Kind.__derived_enum_equals(OrganizeModule.MediaGalleryMetadataRowViewModel.Kind, OrganizeModule.MediaGalleryMetadataRowViewModel.Kind) -> Swift.Bool
+OrganizeModule.MediaGalleryMetadataRowViewModel.Kind.hash(into: inout Swift.Hasher) -> ()
+OrganizeModule.MediaGalleryMetadataRowViewModel.Kind.hashValue.getter : Swift.Int
+property descriptor for OrganizeModule.MediaGalleryMetadataRowViewModel.Kind.hashValue : Swift.Int
+type metadata accessor for OrganizeModule.MediaGalleryMetadataRowViewModel.Kind
+nominal type descriptor for OrganizeModule.MediaGalleryMetadataRowViewModel.Kind
+type metadata for OrganizeModule.MediaGalleryMetadataRowViewModel.Kind
+protocol conformance descriptor for OrganizeModule.MediaGalleryMetadataRowViewModel.Kind : Swift.Hashable in OrganizeModule
+protocol conformance descriptor for OrganizeModule.MediaGalleryMetadataRowViewModel.Kind : Swift.Equatable in OrganizeModule
+OrganizeModule.MediaGalleryMetadataRowViewModel.kind.getter : OrganizeModule.MediaGalleryMetadataRowViewModel.Kind
+property descriptor for OrganizeModule.MediaGalleryMetadataRowViewModel.kind : OrganizeModule.MediaGalleryMetadataRowViewModel.Kind
+OrganizeModule.MediaGalleryMetadataRowViewModel.init(title: Swift.String, description: Swift.String, kind: OrganizeModule.MediaGalleryMetadataRowViewModel.Kind) -> OrganizeModule.MediaGalleryMetadataRowViewModel
+OrganizeModule.MediaGalleryMetadataRowViewModel.init(title: Swift.String, description: [Swift.String], kind: OrganizeModule.MediaGalleryMetadataRowViewModel.Kind) -> OrganizeModule.MediaGalleryMetadataRowViewModel
+OrganizeModule.MediaGalleryMetadataRowViewModel.title.getter : Swift.String
+property descriptor for OrganizeModule.MediaGalleryMetadataRowViewModel.title : Swift.String
+type metadata accessor for OrganizeModule.MediaGalleryMetadataRowViewModel
+nominal type descriptor for OrganizeModule.MediaGalleryMetadataRowViewModel
+type metadata for OrganizeModule.MediaGalleryMetadataRowViewModel
+variable initialization expression of OrganizeModule.MediaGalleryPreviewViewController.(metadataViewController in _FAE9C21F7D0E9C5CEDDA7DFC87AA2722) : OrganizeModule.MediaGalleryMetadataViewController
+OrganizeModule.MediaGalleryPreviewViewController.viewDidLoad() -> ()
+variable initialization expression of OrganizeModule.MediaGalleryPreviewViewController.(cancellables in _FAE9C21F7D0E9C5CEDDA7DFC87AA2722) : Swift.Set<Combine.AnyCancellable>
+variable initialization expression of OrganizeModule.MediaGalleryPreviewViewController.(descriptionMapper in _FAE9C21F7D0E9C5CEDDA7DFC87AA2722) : OrganizeModule.MediaGalleryMetadataRowViewModelFactory
+OrganizeModule.MediaGalleryPreviewViewController.delegate.modify : OrganizeModule.MediaGalleryPreviewViewControllerDelegate?
+OrganizeModule.MediaGalleryPreviewViewController.delegate.getter : OrganizeModule.MediaGalleryPreviewViewControllerDelegate?
+property descriptor for OrganizeModule.MediaGalleryPreviewViewController.delegate : OrganizeModule.MediaGalleryPreviewViewControllerDelegate?
+direct field offset for OrganizeModule.MediaGalleryPreviewViewController.delegate : OrganizeModule.MediaGalleryPreviewViewControllerDelegate?
+variable initialization expression of OrganizeModule.MediaGalleryPreviewViewController.delegate : OrganizeModule.MediaGalleryPreviewViewControllerDelegate?
+OrganizeModule.MediaGalleryPreviewViewController.delegate.setter : OrganizeModule.MediaGalleryPreviewViewControllerDelegate?
+OrganizeModule.MediaGalleryPreviewViewController.__allocating_init() -> OrganizeModule.MediaGalleryPreviewViewController
+OrganizeModule.MediaGalleryPreviewViewController.init() -> OrganizeModule.MediaGalleryPreviewViewController
+type metadata accessor for OrganizeModule.MediaGalleryPreviewViewController
+nominal type descriptor for OrganizeModule.MediaGalleryPreviewViewController
+type metadata for OrganizeModule.MediaGalleryPreviewViewController
+OrganizeModule.MediaGalleryPreviewViewController.__deallocating_deinit
+OrganizeModule.MediaGallerySelectControlViewController.viewDidLoad() -> ()
+variable initialization expression of OrganizeModule.MediaGallerySelectControlViewController.(cancellables in _F47A1178611B7C5779F43A973857DCFB) : Swift.Set<Combine.AnyCancellable>
+OrganizeModule.MediaGallerySelectControlViewController.__allocating_init() -> OrganizeModule.MediaGallerySelectControlViewController
+OrganizeModule.MediaGallerySelectControlViewController.init() -> OrganizeModule.MediaGallerySelectControlViewController
+type metadata accessor for OrganizeModule.MediaGallerySelectControlViewController
+nominal type descriptor for OrganizeModule.MediaGallerySelectControlViewController
+type metadata for OrganizeModule.MediaGallerySelectControlViewController
+OrganizeModule.MediaGallerySelectControlViewController.__deallocating_deinit
+protocol descriptor for OrganizeModule.MediaGalleryPreviewViewControllerDelegate
+protocol requirements base descriptor for OrganizeModule.MediaGalleryPreviewViewControllerDelegate
+_OBJC_METACLASS_$_OrganizeModule.MediaGalleryViewController
+_OBJC_METACLASS_$_OrganizeModule.MediaGalleryPreviewViewController
+_OBJC_METACLASS_$_OrganizeModule.MediaGallerySelectControlViewController

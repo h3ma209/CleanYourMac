@@ -11,6 +11,10 @@ pub fn junk_candidates(home: &Path) -> Vec<(&'static str, PathBuf)> {
             home.join("Library/Application Support/Spotify/PersistentCache/Storage"),
         ),
         (
+            "Adobe media cache",
+            home.join("Library/Application Support/Adobe/Common/Media Cache Files"),
+        ),
+        (
             "Xcode derived data",
             home.join("Library/Developer/Xcode/DerivedData"),
         ),
@@ -83,6 +87,21 @@ pub fn move_root_to_trash(home: &Path, path: &Path) -> Result<(), String> {
     if !allowed {
         return Err("only a surveyed cache or log root can be moved to the Trash".into());
     }
+    finder_trash(path)
+}
+
+/// Moves one file that lives under `~/Downloads`. Refuses the Downloads folder itself.
+pub fn move_download_to_trash(home: &Path, path: &Path) -> Result<(), String> {
+    let downloads = home.join("Downloads");
+    let under = path.starts_with(&downloads) && path != downloads;
+    let file = path.is_file();
+    if !under || !file {
+        return Err("only a file inside Downloads can be moved to the Trash".into());
+    }
+    finder_trash(path)
+}
+
+pub(crate) fn finder_trash(path: &Path) -> Result<(), String> {
     let text = path.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
     let script = format!(r#"tell application "Finder" to delete POSIX file "{text}""#);
     let output = Command::new("osascript")

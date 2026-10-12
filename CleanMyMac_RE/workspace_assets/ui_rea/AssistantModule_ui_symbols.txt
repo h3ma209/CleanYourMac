@@ -1,0 +1,54 @@
+AssistantModule.AnnouncementViewController.__allocating_init() -> AssistantModule.AnnouncementViewController
+AssistantModule.AnnouncementViewController.__allocating_init(viewModel: AssistantModule.AnnouncementViewModelType) -> AssistantModule.AnnouncementViewController
+AssistantModule.AnnouncementViewController.__deallocating_deinit
+AssistantModule.AnnouncementViewController.close() -> ()
+AssistantModule.AnnouncementViewController.init() -> AssistantModule.AnnouncementViewController
+AssistantModule.AnnouncementViewController.init(viewModel: AssistantModule.AnnouncementViewModelType) -> AssistantModule.AnnouncementViewController
+AssistantModule.AnnouncementViewController.setOnClose(() -> ()) -> ()
+AssistantModule.AnnouncementViewController.viewDidAppear() -> ()
+AssistantModule.AnnouncementViewController.viewDidLoad() -> ()
+AssistantModule.AnnouncementViewController.webView(_: __C.WKWebView, decidePolicyFor: __C.WKNavigationAction, decisionHandler: (__C.WKNavigationActionPolicy) -> ()) -> ()
+AssistantModule.AnnouncementViewModel.__allocating_init(htmlURL: Foundation.URL, viewWidth: Swift.Int, viewHeight: Swift.Int) -> AssistantModule.AnnouncementViewModel
+AssistantModule.AnnouncementViewModel.__deallocating_deinit
+AssistantModule.AnnouncementViewModel.closeAnnouncement() -> ()
+AssistantModule.AnnouncementViewModel.deinit
+AssistantModule.AnnouncementViewModel.htmlURL.getter : Foundation.URL
+AssistantModule.AnnouncementViewModel.init(htmlURL: Foundation.URL, viewWidth: Swift.Int, viewHeight: Swift.Int) -> AssistantModule.AnnouncementViewModel
+AssistantModule.AnnouncementViewModel.isAcceptedURL(Foundation.URL) -> Swift.Bool
+AssistantModule.AnnouncementViewModel.openURL(Foundation.URL) -> ()
+AssistantModule.AnnouncementViewModel.setOnClose(() -> ()) -> ()
+AssistantModule.AnnouncementViewModel.setOnOpenURL((Foundation.URL) -> ()) -> ()
+AssistantModule.AnnouncementViewModel.setOnShown(() -> ()) -> ()
+AssistantModule.AnnouncementViewModel.shown() -> ()
+AssistantModule.AnnouncementViewModel.urlValidator.getter : ((Foundation.URL) -> Swift.Bool)?
+AssistantModule.AnnouncementViewModel.urlValidator.modify : ((Foundation.URL) -> Swift.Bool)?
+AssistantModule.AnnouncementViewModel.urlValidator.setter : ((Foundation.URL) -> Swift.Bool)?
+AssistantModule.AnnouncementViewModel.viewHeight.getter : Swift.Int
+AssistantModule.AnnouncementViewModel.viewWidth.getter : Swift.Int
+AssistantModule.AnnouncementsPresenter.presentAnnouncement(with: AssistantModule.AnnouncementViewModelType) -> ()
+AssistantModule.HealthScoreSimulatableViewController.__allocating_init(macModel: SystemUtils.MacModel, factory: (SystemUtils.MacModel) -> AssistantUI.HealthScoreViewControllerType, simulationService: AssistantDomain.HealthIndexSimulationService) -> AssistantModule.HealthScoreSimulatableViewController
+AssistantModule.HealthScoreSimulatableViewController.__allocating_init(macModel: SystemUtils.MacModel, factory: (SystemUtils.MacModel) -> __C.NSViewController, simulationService: AssistantDomain.HealthIndexSimulationService) -> AssistantModule.HealthScoreSimulatableViewController
+AssistantModule.HealthScoreSimulatableViewController.__deallocating_deinit
+AssistantModule.HealthScoreSimulatableViewController.applyTransitionState(isExpanded: Swift.Bool) -> ()
+AssistantModule.HealthScoreSimulatableViewController.configureChildViewController(__C.NSViewController) -> ()
+AssistantModule.HealthScoreSimulatableViewController.didEndTransition(toExpanded: Swift.Bool) -> ()
+AssistantModule.HealthScoreSimulatableViewController.init(macModel: SystemUtils.MacModel, factory: (SystemUtils.MacModel) -> AssistantUI.HealthScoreViewControllerType, simulationService: AssistantDomain.HealthIndexSimulationService) -> AssistantModule.HealthScoreSimulatableViewController
+AssistantModule.HealthScoreSimulatableViewController.init(macModel: SystemUtils.MacModel, factory: (SystemUtils.MacModel) -> __C.NSViewController, simulationService: AssistantDomain.HealthIndexSimulationService) -> AssistantModule.HealthScoreSimulatableViewController
+AssistantModule.HealthScoreSimulatableViewController.update(with: AssistantCore.MacStateSnapshot) -> ()
+AssistantModule.HealthScoreSimulatableViewController.willBeginTransition(toExpanded: Swift.Bool) -> ()
+_OBJC_METACLASS_$__TtC15AssistantModule26AnnouncementViewController
+_OBJC_METACLASS_$__TtC15AssistantModule36HealthScoreSimulatableViewController
+direct field offset for AssistantModule.AnnouncementViewModel.htmlURL : Foundation.URL
+direct field offset for AssistantModule.AnnouncementViewModel.urlValidator : ((Foundation.URL) -> Swift.Bool)?
+direct field offset for AssistantModule.AnnouncementViewModel.viewHeight : Swift.Int
+direct field offset for AssistantModule.AnnouncementViewModel.viewWidth : Swift.Int
+metaclass for AssistantModule.AnnouncementViewModel
+variable initialization expression of AssistantModule.AnnouncementViewController.(onClose in _D12FDA5A31BD611857FE5D1525E4B696) : (() -> ())?
+variable initialization expression of AssistantModule.AnnouncementViewModel.(onClose in _37F3DDA01170B6F8EACADB8436B794C5) : (() -> ())?
+variable initialization expression of AssistantModule.AnnouncementViewModel.(onOpenURL in _37F3DDA01170B6F8EACADB8436B794C5) : ((Foundation.URL) -> ())?
+variable initialization expression of AssistantModule.AnnouncementViewModel.(onShown in _37F3DDA01170B6F8EACADB8436B794C5) : (() -> ())?
+variable initialization expression of AssistantModule.AnnouncementViewModel.urlValidator : ((Foundation.URL) -> Swift.Bool)?
+variable initialization expression of AssistantModule.AnnouncementsPresenter.(announcementViewModel in _21831DD893B3F81AA0510C623CDE8FEF) : AssistantModule.AnnouncementViewModelType?
+variable initialization expression of AssistantModule.AnnouncementsPresenter.(enqueuedAnnouncements in _21831DD893B3F81AA0510C623CDE8FEF) : Swift.Set<AssistantModule.AnnouncementViewController>
+variable initialization expression of AssistantModule.AnnouncementsPresenter.announcementWindowController : AssistantModule.AnnouncementViewController?
+variable initialization expression of AssistantModule.HealthScoreSimulatableViewController.(recentSnapshot in _A2FEFFDCBA375D4F1B681685C00DDEC5) : AssistantCore.MacStateSnapshot?

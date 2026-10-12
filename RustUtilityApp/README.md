@@ -22,12 +22,17 @@ cargo run -p ui
 
 `cargo run -p ui` opens the Sable window. The sidebar switches features:
 
-- Smart Care runs cleanup, access, launch agents, and applications together
-- Protection walks a folder and flags watched extensions
-- Cleanup measures cache and log roots and can move one of those roots to the Trash
-- Performance lists LaunchAgents, flushes the user DNS cache, and asks Spotlight for status or a reindex
-- Applications lists bundle names and identifiers
-- Space sizes the children of a folder
+Each screen opens with a plain-language explanation and a badge: read-only, moves to Trash (undoable), or may ask for a password. Screens fill themselves on first open. Anything that moves a file shows a confirmation first.
+
+- Overview: how much space you can free, app count, startup items, disk access
+- Free Up Space: caches and logs, sized, each group can go to the Trash
+- Apps: searchable list; click an app to see files it left in your Library
+- Tune-Up: startup items, flush DNS, check or rebuild Spotlight
+- File Finder: pick a folder and file types (installers, archives...); lists matches, never changes files
+- Big Downloads: files of 50 MB or more in Downloads, one at a time to the Trash
+- Disk Usage: folder sizes with drill-down (Open / Up one level)
+- Cloud Folders: iCloud and CloudStorage sizes
+- Live Stats: CPU and memory with a plain verdict
 
 Hits and surveys do not unlink files. Trash goes through Finder and only accepts the surveyed cache or log roots. Spotlight reindex may ask for an administrator.
 

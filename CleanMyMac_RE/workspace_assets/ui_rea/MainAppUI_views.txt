@@ -1,0 +1,80 @@
+variable initialization expression of MainAppUI.MainWindowController.(ubiquitousButtonDimmingController in _21EC039C1AA36FDFA09E8D239F26404A) : MainAppUI.UbiquitousButtonDimmingController
+MainAppUI.MainWindowController.__allocating_init(mainWindow: MainAppUI.MainWindow, ubiquitousButtonWindow: UbiquitousButtonUI.UbiquitousButtonWindow, ubiquitousButtonBackgroundWindow: UbiquitousButtonUI.UbiquitousButtonWindowBackground) -> MainAppUI.MainWindowController
+method descriptor for MainAppUI.MainWindowController.__allocating_init(mainWindow: MainAppUI.MainWindow, ubiquitousButtonWindow: UbiquitousButtonUI.UbiquitousButtonWindow, ubiquitousButtonBackgroundWindow: UbiquitousButtonUI.UbiquitousButtonWindowBackground) -> MainAppUI.MainWindowController
+MainAppUI.MainWindowController.init(mainWindow: MainAppUI.MainWindow, ubiquitousButtonWindow: UbiquitousButtonUI.UbiquitousButtonWindow, ubiquitousButtonBackgroundWindow: UbiquitousButtonUI.UbiquitousButtonWindowBackground) -> MainAppUI.MainWindowController
+MainAppUI.MainWindowController.windowDidResize(Foundation.Notification) -> ()
+MainAppUI.MainWindowController.windowWillClose(Foundation.Notification) -> ()
+variable initialization expression of MainAppUI.MainWindowController.(appearanceSource in _21EC039C1AA36FDFA09E8D239F26404A) : MainAppUI.WindowAppearanceSource
+MainAppUI.MainWindowController.ubiquitousButton.getter : __C.NSView
+property descriptor for MainAppUI.MainWindowController.ubiquitousButton : __C.NSView
+variable initialization expression of MainAppUI.MainWindowController.(isSidebarExpanded in _21EC039C1AA36FDFA09E8D239F26404A) : Swift.Bool
+MainAppUI.MainWindowController.windowShouldClose(__C.NSWindow) -> Swift.Bool
+MainAppUI.MainWindowController.windowDidBecomeKey(Foundation.Notification) -> ()
+MainAppUI.MainWindowController.setSidebarCollapsed() -> ()
+variable initialization expression of MainAppUI.MainWindowController.(lastReportedVisibility in _21EC039C1AA36FDFA09E8D239F26404A) : Swift.Bool
+static MainAppUI.MainWindowController.restorableStateKeyPaths.getter : [Swift.String]
+MainAppUI.MainWindowController.windowDidExitFullScreen(Foundation.Notification) -> ()
+MainAppUI.MainWindowController.windowDidEnterFullScreen(Foundation.Notification) -> ()
+MainAppUI.MainWindowController.windowWillExitFullScreen(Foundation.Notification) -> ()
+variable initialization expression of MainAppUI.MainWindowController.(frameForNonFullScreenMode in _21EC039C1AA36FDFA09E8D239F26404A) : __C.CGRect
+variable initialization expression of MainAppUI.MainWindowController.(isFullScreenTransitioning in _21EC039C1AA36FDFA09E8D239F26404A) : Swift.Bool
+MainAppUI.MainWindowController.windowWillEnterFullScreen(Foundation.Notification) -> ()
+MainAppUI.MainWindowController.isUbiquitousButtonAccessible.modify : Swift.Bool
+MainAppUI.MainWindowController.isUbiquitousButtonAccessible.getter : Swift.Bool
+property descriptor for MainAppUI.MainWindowController.isUbiquitousButtonAccessible : Swift.Bool
+direct field offset for MainAppUI.MainWindowController.isUbiquitousButtonAccessible : Swift.Bool
+variable initialization expression of MainAppUI.MainWindowController.isUbiquitousButtonAccessible : Swift.Bool
+MainAppUI.MainWindowController.isUbiquitousButtonAccessible.setter : Swift.Bool
+MainAppUI.MainWindowController.customWindowsToExitFullScreen(for: __C.NSWindow) -> [__C.NSWindow]?
+MainAppUI.MainWindowController.windowDidChangeOcclusionState(Foundation.Notification) -> ()
+MainAppUI.MainWindowController.windowDidFailToExitFullScreen(__C.NSWindow) -> ()
+MainAppUI.MainWindowController.customWindowsToEnterFullScreen(for: __C.NSWindow) -> [__C.NSWindow]?
+MainAppUI.MainWindowController.windowDidFailToEnterFullScreen(__C.NSWindow) -> ()
+MainAppUI.MainWindowController.fixUbiquitousButtonFrameIfNeeded() -> ()
+MainAppUI.MainWindowController.composeWindowsAndPrepareToDisplay() -> ()
+MainAppUI.MainWindowController.__allocating_init(coder: __C.NSCoder) -> MainAppUI.MainWindowController?
+MainAppUI.MainWindowController.init(coder: __C.NSCoder) -> MainAppUI.MainWindowController?
+MainAppUI.MainWindowController.start() -> ()
+MainAppUI.MainWindowController.__allocating_init(window: __C.NSWindow?) -> MainAppUI.MainWindowController
+MainAppUI.MainWindowController.init(window: __C.NSWindow?) -> MainAppUI.MainWindowController
+MainAppUI.MainWindowController.window(_: __C.NSWindow, startCustomAnimationToEnterFullScreenOn: __C.NSScreen, withDuration: Swift.Double) -> ()
+MainAppUI.MainWindowController.window(_: __C.NSWindow, startCustomAnimationToExitFullScreenWithDuration: Swift.Double) -> ()
+MainAppUI.MainWindowController.delegate.modify : MainAppUI.MainWindowControllerDelegate?
+MainAppUI.MainWindowController.delegate.getter : MainAppUI.MainWindowControllerDelegate?
+property descriptor for MainAppUI.MainWindowController.delegate : MainAppUI.MainWindowControllerDelegate?
+direct field offset for MainAppUI.MainWindowController.delegate : MainAppUI.MainWindowControllerDelegate?
+variable initialization expression of MainAppUI.MainWindowController.delegate : MainAppUI.MainWindowControllerDelegate?
+MainAppUI.MainWindowController.delegate.setter : MainAppUI.MainWindowControllerDelegate?
+type metadata accessor for MainAppUI.MainWindowController
+nominal type descriptor for MainAppUI.MainWindowController
+type metadata for MainAppUI.MainWindowController
+MainAppUI.MainWindowController.__deallocating_deinit
+variable initialization expression of MainAppUI.MainWindowContainerView.backgroundView : __C.NSView
+variable initialization expression of MainAppUI.MainWindowContainerView.headerView : __C.NSView
+variable initialization expression of MainAppUI.MainWindowContainerView.sidebarView : __C.NSView
+variable initialization expression of MainAppUI.MainWindowContainerView.containerView : __C.NSView
+protocol descriptor for MainAppUI.MainWindowControllerDelegate
+protocol requirements base descriptor for MainAppUI.MainWindowControllerDelegate
+MainAppUI.MainWindowContainerViewController.__allocating_init(navigationBarViewController: __C.NSViewController, sidebarViewController: __C.NSViewController & MainAppUI.IsHoverableViewControllerType, moduleViewController: __C.NSViewController, canvasViewController: __C.NSViewController) -> MainAppUI.MainWindowContainerViewController
+method descriptor for MainAppUI.MainWindowContainerViewController.__allocating_init(navigationBarViewController: __C.NSViewController, sidebarViewController: __C.NSViewController & MainAppUI.IsHoverableViewControllerType, moduleViewController: __C.NSViewController, canvasViewController: __C.NSViewController) -> MainAppUI.MainWindowContainerViewController
+MainAppUI.MainWindowContainerViewController.init(navigationBarViewController: __C.NSViewController, sidebarViewController: __C.NSViewController & MainAppUI.IsHoverableViewControllerType, moduleViewController: __C.NSViewController, canvasViewController: __C.NSViewController) -> MainAppUI.MainWindowContainerViewController
+MainAppUI.MainWindowContainerViewController.navigationBarViewController.getter : __C.NSViewController
+property descriptor for MainAppUI.MainWindowContainerViewController.navigationBarViewController : __C.NSViewController
+direct field offset for MainAppUI.MainWindowContainerViewController.navigationBarViewController : __C.NSViewController
+MainAppUI.MainWindowContainerViewController.canvasViewController.getter : __C.NSViewController
+property descriptor for MainAppUI.MainWindowContainerViewController.canvasViewController : __C.NSViewController
+direct field offset for MainAppUI.MainWindowContainerViewController.canvasViewController : __C.NSViewController
+MainAppUI.MainWindowContainerViewController.moduleViewController.getter : __C.NSViewController
+property descriptor for MainAppUI.MainWindowContainerViewController.moduleViewController : __C.NSViewController
+direct field offset for MainAppUI.MainWindowContainerViewController.moduleViewController : __C.NSViewController
+MainAppUI.MainWindowContainerViewController.sidebarViewController.getter : __C.NSViewController & MainAppUI.IsHoverableViewControllerType
+property descriptor for MainAppUI.MainWindowContainerViewController.sidebarViewController : __C.NSViewController & MainAppUI.IsHoverableViewControllerType
+direct field offset for MainAppUI.MainWindowContainerViewController.sidebarViewController : __C.NSViewController & MainAppUI.IsHoverableViewControllerType
+MainAppUI.MainWindowContainerViewController.hidePopover(animated: Swift.Bool) -> ()
+MainAppUI.MainWindowContainerViewController.showPopover(with: __C.NSView) -> ()
+MainAppUI.MainWindowContainerViewController.viewDidLoad() -> ()
+MainAppUI.MainWindowContainerViewController.dismissOverlay(animated: Swift.Bool, completion: (() -> ())?) -> ()
+MainAppUI.MainWindowContainerViewController.presentOverlay(_: __C.NSViewController, animated: Swift.Bool, completion: (() -> ())?) -> ()
+MainAppUI.MainWindowContainerViewController.isPopoverVisible.getter : Swift.Bool
+property descriptor for MainAppUI.MainWindowContainerViewController.isPopoverVisible : Swift.Bool
+MainAppUI.MainWindowContainerViewController.embeddedControllers() -> [__C.NSViewController]

@@ -9,6 +9,7 @@
 |-------|----------|---------|
 | Overview | [00_initial_findings.md](./00_initial_findings.md) | Executive structural summary |
 | Track 1 — UI & assets | [workspace_assets/UI_SCREEN_MAP.md](./workspace_assets/UI_SCREEN_MAP.md) | Screens/modules from bundles, menus, catalogs |
+| Track 1 — UI REA | [workspace_assets/UI_REA.md](./workspace_assets/UI_REA.md) | Nib decode, window shell, module view controllers |
 | Track 1 — manifest | [workspace_assets/manifest.json](./workspace_assets/manifest.json) | Resource counts + Features_* bundles |
 | Track 1 — hashes | [workspace_assets/manifest_hashes.txt](./workspace_assets/manifest_hashes.txt) | SHA-256 for `.car` / `.nib` paths |
 | Track 1 — catalogs | [workspace_assets/main_asset_catalog_p0.json](./workspace_assets/main_asset_catalog_p0.json) | REA `inspect-asset-catalog` (catalog list) |
