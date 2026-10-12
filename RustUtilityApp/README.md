@@ -20,12 +20,16 @@ cargo run -p ui
 
 `cargo test -p engine` covers cancel, chunked walk, an extension watch hit, and a removal plan that does not unlink.
 
-`cargo run -p ui` opens the Sable window:
+`cargo run -p ui` opens the Sable window. The sidebar switches features:
 
-- Root directory to walk
-- Comma-separated extensions that count as hits (default `dmg,pkg`)
-- Start, Pause / Resume, Cancel
-- Scanned, hit, and error counts plus the hit list
+- Smart Care runs cleanup, access, launch agents, and applications together
+- Protection walks a folder and flags watched extensions
+- Cleanup measures cache and log roots and can move one of those roots to the Trash
+- Performance lists LaunchAgents, flushes the user DNS cache, and asks Spotlight for status or a reindex
+- Applications lists bundle names and identifiers
+- Space sizes the children of a folder
+
+Hits and surveys do not unlink files. Trash goes through Finder and only accepts the surveyed cache or log roots. Spotlight reindex may ask for an administrator.
 
 ## Layout
 

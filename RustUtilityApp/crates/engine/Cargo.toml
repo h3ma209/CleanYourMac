@@ -8,4 +8,5 @@ license = "MIT"
 [dependencies]
 async-trait = "0.1"
 thiserror = "2"
+sysinfo = "0.33"
 tokio = { version = "1", features = ["fs", "macros", "rt", "sync", "time"] }

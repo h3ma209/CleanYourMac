@@ -32,6 +32,10 @@
 | Track 2 — scan pipeline | [binary_logic/features_decompile/03_SCAN_PIPELINE_CLOSED.md](./binary_logic/features_decompile/03_SCAN_PIPELINE_CLOSED.md) | startScanning through checkURL call |
 | Domain 1 — Smart Care | [binary_logic/features_decompile/04_DOMAIN1_SMART_CARE.md](./binary_logic/features_decompile/04_DOMAIN1_SMART_CARE.md) | Orchestrator start/pause/aggregate, proven states |
 | Domain 2 — cleanup engine | [binary_logic/features_decompile/05_DOMAIN2_CLEANUP_ENGINE.md](./binary_logic/features_decompile/05_DOMAIN2_CLEANUP_ENGINE.md) | Junk paths, enumerator, trash vs lock-aware remove |
+| Domain 3 — protection | [binary_logic/features_decompile/06_DOMAIN3_PROTECTION.md](./binary_logic/features_decompile/06_DOMAIN3_PROTECTION.md) | XPC health-monitor client and permission tags |
+| Domain 4 — performance | [binary_logic/features_decompile/07_DOMAIN4_PERFORMANCE.md](./binary_logic/features_decompile/07_DOMAIN4_PERFORMANCE.md) | Login items, DNS flush, Spotlight reindex |
+| Domain 5 — applications | [binary_logic/features_decompile/08_DOMAIN5_APPLICATIONS.md](./binary_logic/features_decompile/08_DOMAIN5_APPLICATIONS.md) | Bundle id, leftover roots, reset vs uninstall |
+| Domain 6 — Space Lens | [binary_logic/features_decompile/09_DOMAIN6_SPACE_LENS.md](./binary_logic/features_decompile/09_DOMAIN6_SPACE_LENS.md) | Size tree node and scan task factory |
 
 ## Prior session
 

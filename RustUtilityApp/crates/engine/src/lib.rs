@@ -3,21 +3,36 @@
 //! The pipeline follows the shape of a scan task: enumerate, chunk, check, report.
 //! Detection rules are injected. Nothing in this crate deletes files.
 
+mod access;
+mod apps;
+mod care;
+mod cleanup;
 mod control;
 mod detect;
 mod enumerate;
 mod error;
 mod event;
+mod performance;
 mod remove;
 mod scan;
+mod space;
 
+pub use access::{folder_access, AccessStatus};
+pub use apps::{installed_apps, survey_leftovers, InstalledApp, LeftoverHit};
+pub use care::{run_care, CareReport, CareState, ModuleResult};
+pub use cleanup::{directory_size, junk_candidates, junk_roots, move_root_to_trash, JunkRoot};
 pub use control::ExecutionControl;
 pub use detect::{Detector, ExtensionWatchDetector, MetadataDetector};
 pub use enumerate::{walk, Chunk, WalkOptions};
 pub use error::ScanError;
 pub use event::{Detection, ScanEvent};
+pub use performance::{
+    flush_dns_cache, launch_agents, machine_sample, reindex_spotlight, spotlight_status, LaunchAgent,
+    MachineSample,
+};
 pub use remove::{RemovalPlan, RemoveTask};
 pub use scan::{run_scan, ScanConfig};
+pub use space::{scan_space, SpaceNode, SpaceReport};
 
 #[cfg(test)]
 mod tests {
@@ -96,6 +111,36 @@ mod tests {
         let plan = RemoveTask::plan(&hits);
         assert!(!plan.executed);
         assert!(dir.join("note.dmg").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn trash_refuses_paths_outside_cache_roots() {
+        let err = move_root_to_trash(std::path::Path::new("/tmp"), std::path::Path::new("/etc")).unwrap_err();
+        assert!(err.contains("surveyed"));
+    }
+
+    #[test]
+    fn leftover_survey_matches_bundle_id() {
+        let home = std::env::temp_dir().join(format!("rust_utility_left_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        let prefs = home.join("Library/Preferences");
+        std::fs::create_dir_all(&prefs).unwrap();
+        std::fs::write(prefs.join("com.example.demo.plist"), b"x").unwrap();
+        let hits = survey_leftovers(&home, "com.example.demo");
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].path.ends_with("com.example.demo.plist"));
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn directory_size_sums_files() {
+        let dir = std::env::temp_dir().join(format!("rust_utility_size_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("nested")).unwrap();
+        std::fs::write(dir.join("a.txt"), b"abcd").unwrap();
+        std::fs::write(dir.join("nested/b.txt"), b"xy").unwrap();
+        assert_eq!(directory_size(&dir), 6);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
