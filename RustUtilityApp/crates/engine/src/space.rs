@@ -26,6 +26,8 @@ pub struct SpaceNode {
     pub is_purgeable: bool,
     pub cloud: CloudStatus,
     pub leaves: u64,
+    /// Seconds since UNIX epoch from the item's metadata, when available.
+    pub modified: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -69,6 +71,11 @@ pub async fn scan_space(root: PathBuf) -> SpaceReport {
                 && !meta.as_ref().is_some_and(|meta| meta.file_type().is_symlink());
             let flags = meta.as_ref().map(|meta| meta.st_flags()).unwrap_or(0);
             let cloud = cloud_status(&path, flags);
+            let modified = meta
+                .as_ref()
+                .and_then(|meta| meta.modified().ok())
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|duration| duration.as_secs());
             let bytes = if !same_volume {
                 0
             } else if is_directory {
@@ -93,6 +100,7 @@ pub async fn scan_space(root: PathBuf) -> SpaceReport {
                 is_purgeable: false,
                 cloud,
                 leaves: u64::from(!is_directory),
+                modified,
             }
         }));
     }
@@ -103,6 +111,7 @@ pub async fn scan_space(root: PathBuf) -> SpaceReport {
         }
     }
     children.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+    children.retain(|node| node.bytes > 0 || node.is_directory);
     let total = children.iter().fold(0u64, |sum, node| sum.saturating_add(node.bytes));
     SpaceReport {
         root,
@@ -110,6 +119,9 @@ pub async fn scan_space(root: PathBuf) -> SpaceReport {
         children,
     }
 }
+
+/// Bubbles and ring views hide items below this share of the folder total.
+pub const SPACE_LENS_BUBBLE_THRESHOLD: f32 = 0.02;
 
 /// Bytes this file occupies on disk. `len()` is the logical size and counts clones and holes in full.
 fn allocated_bytes(meta: &std::fs::Metadata) -> u64 {

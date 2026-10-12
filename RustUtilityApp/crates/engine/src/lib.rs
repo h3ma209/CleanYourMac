@@ -18,6 +18,7 @@ mod performance;
 mod remove;
 mod scan;
 mod space;
+mod threats;
 
 pub use access::{folder_access, AccessStatus};
 pub use apps::{installed_apps, survey_leftovers, InstalledApp, LeftoverHit};
@@ -38,7 +39,11 @@ pub use performance::{
 };
 pub use remove::{RemovalPlan, RemoveTask};
 pub use scan::{run_scan, ScanConfig};
-pub use space::{computer_root, is_spared, scan_space, trash_selected, CloudStatus, SpaceNode, SpaceReport};
+pub use space::{
+    computer_root, is_spared, scan_space, trash_selected, CloudStatus, SpaceNode, SpaceReport,
+    SPACE_LENS_BUBBLE_THRESHOLD,
+};
+pub use threats::{prepare_and_scan, remember_ignore, trash_threat, ThreatHit, ThreatReport};
 
 #[cfg(test)]
 mod tests {
