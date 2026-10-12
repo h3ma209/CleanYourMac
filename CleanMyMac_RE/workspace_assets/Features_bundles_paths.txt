@@ -1,0 +1,8 @@
+/Applications/CleanMyMac_5_MAS.app/Contents/Resources/Features_CarouselFlow.bundle
+/Applications/CleanMyMac_5_MAS.app/Contents/Resources/Features_EmailSubscription.bundle
+/Applications/CleanMyMac_5_MAS.app/Contents/Resources/Features_FDAResolutionUIKit.bundle
+/Applications/CleanMyMac_5_MAS.app/Contents/Resources/Features_IntroFlow.bundle
+/Applications/CleanMyMac_5_MAS.app/Contents/Resources/Features_KeepMenuOpen.bundle
+/Applications/CleanMyMac_5_MAS.app/Contents/Resources/Features_PurchaseFlow.bundle
+/Applications/CleanMyMac_5_MAS.app/Contents/Resources/Features_RealTimeProtection.bundle
+/Applications/CleanMyMac_5_MAS.app/Contents/Resources/Features_Settings.bundle

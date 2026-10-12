@@ -1,0 +1,23 @@
+{
+  "BuildMachineOSBuild" => "25F71"
+  "CFBundleDevelopmentRegion" => "en"
+  "CFBundleIdentifier" => "com.macpaw.CleanMyMac.RealTimeProtection.generated.resources"
+  "CFBundleInfoDictionaryVersion" => "6.0"
+  "CFBundleName" => "Features_RealTimeProtection"
+  "CFBundlePackageType" => "BNDL"
+  "CFBundleShortVersionString" => "1.0"
+  "CFBundleSupportedPlatforms" => [
+    0 => "MacOSX"
+  ]
+  "CFBundleVersion" => "1"
+  "DTCompiler" => "com.apple.compilers.llvm.clang.1_0"
+  "DTPlatformBuild" => "25F70"
+  "DTPlatformName" => "macosx"
+  "DTPlatformVersion" => "26.5"
+  "DTSDKBuild" => "25F70"
+  "DTSDKName" => "macosx26.5"
+  "DTXcode" => "2660"
+  "DTXcodeBuild" => "17F113"
+  "LSMinimumSystemVersion" => "11.0"
+  "NSHumanReadableCopyright" => "Copyright ©. All rights reserved."
+}

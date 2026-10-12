@@ -1,0 +1,14 @@
+{
+  "catalog": "Features_RealTimeProtection.bundle/Contents/Resources/Assets.car",
+  "rea_inspect_asset_catalog": "Rejected. Command accepts an .app bundle, not a resource .bundle. A stub .app then failed provider selection (ghidra/hopper/ida) and inspect-asset-catalog has no --provider flag.",
+  "inventory_tool": "assetutil --info",
+  "record_count": 11,
+  "named_images": [
+    "ModalMoonlockIcon",
+    "ModalMoonlockEnabled",
+    "ModalMoonlockDisabled",
+    "ModalMoonlockCMMIcon"
+  ],
+  "renditions_per_image": ["png", "@2x.png"],
+  "packed": ["ZZZZPackedAsset-1.0.0-gamut0", "ZZZZPackedAsset-2.0.0-gamut0"]
+}

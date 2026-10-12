@@ -1,0 +1,6 @@
+{
+  "bundle": "Features_RealTimeProtection.bundle",
+  "nib_files": [],
+  "storyboardc": [],
+  "interface_builder_decode": "skipped — bundle has no .nib or .storyboardc; UI is Swift/AppKit programmatic (MoonlockRTPStateModalView)"
+}

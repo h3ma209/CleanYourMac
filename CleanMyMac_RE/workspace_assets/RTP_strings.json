@@ -1,0 +1,12 @@
+{
+  "bundle": "Features_RealTimeProtection.bundle",
+  "bundle_id": "com.macpaw.CleanMyMac.RealTimeProtection.generated.resources",
+  "source": "Contents/Resources/en.lproj/Localizable.strings",
+  "keys": {
+    "RTP_ByCMM_Title": "Real-Time Protection Managed by CleanMyMac",
+    "RTP_ByCMM_Description": "Moonlock app is currently inactive, so CleanMyMac has resumed monitoring your Mac for malware in real time.",
+    "RTP_ByMoonlock_Title": "Real-Time Protection Managed by Moonlock",
+    "RTP_ByMoonlock_Description": "Your Mac is protected from malware by the Moonlock app. To ensure optimal security, CleanMyMac’s monitor is turned off.",
+    "RTP_GotIt_Button_title": "Got It"
+  }
+}

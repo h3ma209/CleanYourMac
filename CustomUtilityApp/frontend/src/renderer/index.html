@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'" />
+    <title>Custom Utility</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Custom Utility</h1>
+        <p>Chunked filesystem walk. Detection is a placeholder. Nothing is deleted.</p>
+      </header>
+
+      <label>
+        Root folder
+        <input id="root" type="text" placeholder="/Users/you/Documents" spellcheck="false" />
+      </label>
+
+      <div class="controls">
+        <button id="start" type="button">Start Scan</button>
+        <button id="pause" type="button">Pause</button>
+        <button id="resume" type="button">Resume</button>
+        <button id="cancel" type="button">Cancel</button>
+      </div>
+
+      <section class="metrics">
+        <article>
+          <span>Files scanned</span>
+          <strong id="files">0</strong>
+        </article>
+        <article>
+          <span>Files / second</span>
+          <strong id="rate">0</strong>
+        </article>
+        <article>
+          <span>Threats</span>
+          <strong id="threats">0</strong>
+        </article>
+      </section>
+
+      <p id="status">Waiting for the engine.</p>
+      <ul id="list"></ul>
+    </main>
+    <script src="../../dist/renderer/renderer.js"></script>
+  </body>
+</html>

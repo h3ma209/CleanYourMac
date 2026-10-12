@@ -1,0 +1,24 @@
+{
+  "bundle": "/Applications/CleanMyMac_5_MAS.app",
+  "generated": "2026-10-12",
+  "resource_counts": {
+    "car": 44,
+    "nib": 13,
+    "storyboardc": 0,
+    "xib": 0,
+    "strings": 735,
+    "plist": 311,
+    "stringsdict": 168
+  },
+  "framework_count": 133,
+  "features_bundles": [
+    "Features_IntroFlow.bundle",
+    "Features_EmailSubscription.bundle",
+    "Features_FDAResolutionUIKit.bundle",
+    "Features_PurchaseFlow.bundle",
+    "Features_RealTimeProtection.bundle",
+    "Features_KeepMenuOpen.bundle",
+    "Features_CarouselFlow.bundle",
+    "Features_Settings.bundle"
+  ]
+}

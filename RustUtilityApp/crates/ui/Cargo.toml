@@ -1,0 +1,11 @@
+[package]
+name = "ui"
+version = "0.1.0"
+edition = "2021"
+description = "egui shell for the scan engine"
+license = "MIT"
+
+[dependencies]
+eframe = "0.29"
+engine = { path = "../engine" }
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }

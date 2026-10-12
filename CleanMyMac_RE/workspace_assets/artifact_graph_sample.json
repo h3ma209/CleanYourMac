@@ -1,0 +1,1 @@
+{"ok":false,"error":{"code":"UNSUPPORTED_OUTPUT_COMBINATION","message":"Token windows cannot preserve structured output. Remove --token-limit/--token-offset and use --filter-output or command pagination."}}
