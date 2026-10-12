@@ -30,6 +30,8 @@
 | Track 3 — RTP replica | [binary_logic/features_decompile/BLUEPRINT_RealTimeProtection.md](./binary_logic/features_decompile/BLUEPRINT_RealTimeProtection.md) | Standalone replica guide |
 | Track 2 — RTP logic | [binary_logic/features_decompile/02_RealTimeProtection_logic.md](./binary_logic/features_decompile/02_RealTimeProtection_logic.md) | Monitor glue + modal init |
 | Track 2 — scan pipeline | [binary_logic/features_decompile/03_SCAN_PIPELINE_CLOSED.md](./binary_logic/features_decompile/03_SCAN_PIPELINE_CLOSED.md) | startScanning through checkURL call |
+| Domain 1 — Smart Care | [binary_logic/features_decompile/04_DOMAIN1_SMART_CARE.md](./binary_logic/features_decompile/04_DOMAIN1_SMART_CARE.md) | Orchestrator start/pause/aggregate, proven states |
+| Domain 2 — cleanup engine | [binary_logic/features_decompile/05_DOMAIN2_CLEANUP_ENGINE.md](./binary_logic/features_decompile/05_DOMAIN2_CLEANUP_ENGINE.md) | Junk paths, enumerator, trash vs lock-aware remove |
 
 ## Prior session
 
