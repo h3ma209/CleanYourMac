@@ -2,10 +2,11 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
+use std::time::Instant;
 
 use eframe::egui::{
-    self, Align, Align2, Color32, Layout, RichText, Rect, Sense, Shape,
-    TextStyle, Vec2,
+    self, Align, Align2, Color32, Id, Layout, RichText, Rect, Sense, Shape,
+    Stroke, TextStyle, Vec2, pos2,
 };
 use engine::{
     flush_dns_cache, folder_access, junk_roots, large_downloads, launch_agents, local_cloud_folders,
@@ -17,16 +18,27 @@ use engine::{
 };
 use tokio::sync::mpsc;
 
+mod components;
 mod icons;
+mod space_lens;
 mod theme;
 mod tokens;
 
 use tokens::*;
 
+use components::{
+    accent_for_screen, compact_page_header, paint_app_background, tab_bar, text_field, BtnKind,
+    SafetyKind, ACTION_COL_W,
+};
+use space_lens::{category_for, fit_label, is_hidden_name, is_protected, layout_treemap, thick_meter, SpaceCategory, TreemapTile};
+use components::{
+    button as cmp_button, button_sized, chip as cmp_chip, label_small as cmp_label_small, list_actions, safety_badge,
+    scroll_list,
+};
 use icons::{heading_font, icon_with_label, paint_brand_mark, paint_screen_icon, paint_ui_icon, UiIcon};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum Screen {
+pub(crate) enum Screen {
     Care,
     Cleanup,
     Apps,
@@ -40,19 +52,6 @@ enum Screen {
 }
 
 impl Screen {
-    const ALL: [Screen; 10] = [
-        Self::Care,
-        Self::Cleanup,
-        Self::Apps,
-        Self::Performance,
-        Self::Protection,
-        Self::Malware,
-        Self::Clutter,
-        Self::Space,
-        Self::Cloud,
-        Self::Assistant,
-    ];
-
     fn label(self) -> &'static str {
         match self {
             Self::Care => "Overview",
@@ -84,8 +83,12 @@ impl Screen {
     }
 
     /// Screens that fill themselves the first time you open them.
+    /// Clutter, Apps, and Performance wait for the dock Scan button.
     fn auto_loads(self) -> bool {
-        !matches!(self, Self::Protection | Self::Malware | Self::Space)
+        matches!(
+            self,
+            Self::Care | Self::Cleanup | Self::Cloud | Self::Assistant
+        )
     }
 
     fn nav_hint(self) -> &'static str {
@@ -100,24 +103,21 @@ struct UiLayout {
     narrow: bool,
     pad_x: f32,
     pad_y: f32,
-    content_max: f32,
 }
 
 impl UiLayout {
     fn from_viewport(w: f32) -> Self {
         let compact = w < BREAK_COMPACT;
         let narrow = w < BREAK_NARROW;
-        let sidebar_w = if compact { SIDEBAR_COMPACT } else if narrow { SIDEBAR_NARROW } else { SIDEBAR_WIDE };
-        let pad_x = if compact { S16 } else if narrow { S24 } else { S32 };
-        let pad_y = if compact { S12 } else { S24 };
-        let content_max = (w - sidebar_w - pad_x * 2.0).clamp(CONTENT_MIN, CONTENT_MAX);
+        let sidebar_w = RAIL_W;
+        let pad_x = S24;
+        let pad_y = if compact { S16 } else { S24 };
         Self {
             sidebar_w,
             compact,
             narrow,
             pad_x,
             pad_y,
-            content_max,
         }
     }
 
@@ -249,6 +249,23 @@ struct ScanApp {
     control: Option<Arc<ExecutionControl>>,
     busy: bool,
     layout: UiLayout,
+    /// 0 = home account, 1 = Macintosh HD. Module scans still read the home folder.
+    landing_volume: u8,
+    care_picks: HashSet<Screen>,
+    /// Checked home tasks still waiting to run. One job at a time.
+    care_followups: Vec<Screen>,
+    last_refresh: Option<Instant>,
+    space_history: Vec<String>,
+    space_future: Vec<String>,
+    apps_tab: usize,
+    perf_tab: usize,
+    clutter_tab: usize,
+    malware_show_skipped: bool,
+    space_show_hidden: bool,
+    space_sort_by_name: bool,
+    space_other_expanded: bool,
+    volume_used: u64,
+    volume_capacity_bytes: u64,
 }
 
 impl ScanApp {
@@ -258,7 +275,7 @@ impl ScanApp {
             .unwrap_or_else(|_| PathBuf::from("/tmp"));
         let threat_root = home.join("Downloads").display().to_string();
         let access = folder_access(Path::new("/Library/Application Support"));
-        Self {
+        let mut app = Self {
             runtime,
             screen: Screen::Care,
             root: home.join("Downloads").display().to_string(),
@@ -296,6 +313,160 @@ impl ScanApp {
             control: None,
             busy: false,
             layout: UiLayout::from_viewport(WINDOW_W),
+            landing_volume: 0,
+            care_picks: HashSet::from([
+                Screen::Cleanup,
+                Screen::Malware,
+                Screen::Performance,
+                Screen::Clutter,
+            ]),
+            care_followups: Vec::new(),
+            last_refresh: None,
+            space_history: Vec::new(),
+            space_future: Vec::new(),
+            apps_tab: 0,
+            perf_tab: 0,
+            clutter_tab: 0,
+            malware_show_skipped: false,
+            space_show_hidden: false,
+            space_sort_by_name: false,
+            space_other_expanded: false,
+            volume_used: 0,
+            volume_capacity_bytes: 0,
+        };
+        app.refresh_volume_stats();
+        app
+    }
+
+    fn refresh_volume_stats(&mut self) {
+        let root = computer_root();
+        if let Some((used, cap)) = volume_capacity(&root) {
+            self.volume_used = used;
+            self.volume_capacity_bytes = cap;
+        }
+    }
+
+    fn space_open(&mut self, path: PathBuf) {
+        if self.busy {
+            return;
+        }
+        let next = path.display().to_string();
+        if next == self.space_root {
+            return;
+        }
+        self.space_future.clear();
+        self.space_history.push(self.space_root.clone());
+        self.space_root = next;
+        self.start_space();
+    }
+
+    fn space_back(&mut self) {
+        if self.busy {
+            return;
+        }
+        let Some(prev) = self.space_history.pop() else {
+            return;
+        };
+        self.space_future.push(self.space_root.clone());
+        self.space_root = prev;
+        self.start_space();
+    }
+
+    fn space_forward(&mut self) {
+        if self.busy {
+            return;
+        }
+        let Some(next) = self.space_future.pop() else {
+            return;
+        };
+        self.space_history.push(self.space_root.clone());
+        self.space_root = next;
+        self.start_space();
+    }
+
+    fn dock_run(&mut self) {
+        if self.busy {
+            return;
+        }
+        match self.screen {
+            Screen::Care => self.run_checked_care(),
+            Screen::Clutter => {
+                self.care_followups.clear();
+                self.loaded.insert(Screen::Clutter);
+                self.clutter.clear();
+                self.start_clutter();
+            }
+            Screen::Apps => {
+                self.care_followups.clear();
+                self.load(Screen::Apps);
+            }
+            Screen::Performance => {
+                self.care_followups.clear();
+                self.load(Screen::Performance);
+            }
+            Screen::Space => {
+                self.care_followups.clear();
+                self.start_space();
+            }
+            _ => {}
+        }
+    }
+
+    /// Run only the home tasks whose checkboxes are on.
+    /// Apps is informational and is never queued.
+    /// A clear threat result is skipped.
+    fn run_checked_care(&mut self) {
+        if self.busy {
+            return;
+        }
+        let mut jobs = Vec::new();
+        if self.care_picks.contains(&Screen::Cleanup) {
+            jobs.push(Screen::Cleanup);
+        }
+        if self.care_picks.contains(&Screen::Performance) {
+            jobs.push(Screen::Performance);
+        }
+        if self.care_picks.contains(&Screen::Clutter) {
+            jobs.push(Screen::Clutter);
+        }
+        let threats_clear = self.threat.as_ref().is_some_and(|report| report.hits.is_empty());
+        if self.care_picks.contains(&Screen::Malware) && !threats_clear {
+            jobs.push(Screen::Malware);
+        }
+        if jobs.is_empty() {
+            self.notice = Some(Notice {
+                ok: false,
+                text: "Select at least one task.".into(),
+                refresh: None,
+            });
+            return;
+        }
+        self.care_followups = jobs;
+        self.pump_care_queue();
+    }
+
+    fn pump_care_queue(&mut self) {
+        while !self.care_followups.is_empty() {
+            let next = self.care_followups.remove(0);
+            self.start_care_job(next);
+            if self.busy {
+                return;
+            }
+        }
+    }
+
+    fn start_care_job(&mut self, screen: Screen) {
+        match screen {
+            Screen::Cleanup => self.start_junk(),
+            Screen::Performance => self.load_agents(),
+            Screen::Apps => self.load_apps(),
+            Screen::Clutter => {
+                self.loaded.insert(Screen::Clutter);
+                self.clutter.clear();
+                self.start_clutter();
+            }
+            Screen::Malware => self.start_threat(),
+            _ => {}
         }
     }
 
@@ -682,9 +853,14 @@ impl ScanApp {
     }
 
     fn finish(&mut self) {
+        let scanned = self.status == "scanning";
         self.busy = false;
         self.status = "idle";
         self.control = None;
+        if scanned {
+            self.last_refresh = Some(Instant::now());
+        }
+        self.pump_care_queue();
     }
 
     fn perform(&mut self, kind: ConfirmKind) {
@@ -782,6 +958,7 @@ impl ScanApp {
                     self.space = Some(report);
                     self.space_selected.clear();
                     self.space_hover = None;
+                    self.refresh_volume_stats();
                     self.finish();
                 }
                 UiMsg::Clutter(files) => {
@@ -876,76 +1053,78 @@ impl eframe::App for ScanApp {
         let busy = self.busy;
         let status = self.status;
         let layout = self.layout;
+        let accent = accent_for_screen(screen);
+        let granted = self.access == AccessStatus::Granted;
 
         egui::SidePanel::left("nav")
             .exact_width(layout.sidebar_w)
             .resizable(false)
-            .frame(
-                theme::sidebar_frame().inner_margin(m_xy(if layout.compact { S8 } else { S16 }, S16)),
-            )
+            .frame(egui::Frame::none())
             .show(ctx, |ui| {
-                sidebar_brand(ui, layout);
-                ui.add_space(if layout.compact { S16 } else { S24 });
-                label_small(ui, if layout.compact { "MENU" } else { "TOOLS" });
+                let rail = ui.max_rect();
+                paint_app_background(ui.painter(), rail);
+                ui.painter().rect_filled(rail, 0.0, Color32::from_black_alpha(32));
+                ui.add_space(S16);
+                rail_brand(ui);
                 ui.add_space(S8);
-                for item in Screen::ALL {
-                    let response = sidebar_nav_item(ui, item, item == screen, layout);
-                    if response.clicked() {
-                        self.go(item);
-                    }
-                    ui.add_space(S4);
-                }
-                ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
-                    status_pill(ui, status, busy, pulse);
-                    ui.add_space(S8);
-                    let granted = self.access == AccessStatus::Granted;
-                    if layout.compact {
-                        let (rect, _) = ui.allocate_exact_size(Vec2::splat(S8), Sense::hover());
-                        ui.painter().circle_filled(
-                            rect.center(),
-                            S4,
-                            if granted { SUCCESS } else { WARN },
-                        );
-                    } else {
-                        ui.label(
-                            RichText::new(if granted {
-                                "Full disk access"
-                            } else {
-                                "Limited disk access"
-                            })
-                            .size(CAPTION).line_height(Some(lh(CAPTION)))
-                            .color(if granted { SUCCESS } else { WARN }),
-                        );
-                    }
-                });
+                let status_h = S32 + S32 + S8;
+                let nav_h = (rail.bottom() - ui.cursor().top() - status_h - S8).max(S32);
+                let before = ui.cursor().top();
+                egui::ScrollArea::vertical()
+                    .id_salt("rail_nav")
+                    .max_height(nav_h)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        for (group, items) in rail_groups() {
+                            rail_group_label(ui, group);
+                            for item in items {
+                                if rail_nav_item(ui, *item, *item == screen, accent_for_screen(*item)).clicked() {
+                                    self.go(*item);
+                                }
+                            }
+                            ui.add_space(S8);
+                        }
+                    });
+                let consumed = ui.cursor().top() - before;
+                ui.add_space((nav_h - consumed).max(0.0));
+                rail_status(ui, granted, status, busy, pulse);
             });
 
         egui::CentralPanel::default()
-            .frame(
-                egui::Frame::none()
-                    .fill(BG)
-                    .inner_margin(m_xy(layout.pad_x, layout.pad_y)),
-            )
+            .frame(egui::Frame::none())
             .show(ctx, |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt(format!("main_{}", screen.label()))
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        ui.set_max_width(layout.content_max);
-                        ui.set_min_width(ui.available_width());
-                        match self.screen {
-                            Screen::Care => care_screen(ui, self),
-                            Screen::Cleanup => cleanup_screen(ui, self),
-                            Screen::Apps => apps_screen(ui, self),
-                            Screen::Performance => performance_screen(ui, self),
-                            Screen::Protection => protection_screen(ui, self),
-                            Screen::Malware => malware_screen(ui, self),
-                            Screen::Clutter => clutter_screen(ui, self),
-                            Screen::Space => space_screen(ui, self),
-                            Screen::Cloud => cloud_screen(ui, self),
-                            Screen::Assistant => assistant_screen(ui, self),
-                        }
-                    });
+                let panel = ui.max_rect();
+                paint_app_background(ui.painter(), panel);
+                let content = Rect::from_min_max(
+                    panel.min + v2(layout.pad_x, layout.pad_y),
+                    panel.max - v2(layout.pad_x, layout.pad_y),
+                );
+                ui.allocate_new_ui(egui::UiBuilder::new().max_rect(content), |ui| {
+                    if screen == Screen::Space {
+                        space_screen(ui, self);
+                    } else if screen == Screen::Care {
+                        care_screen(ui, self);
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .id_salt(format!("main_{}", screen.label()))
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                ui.set_min_width(ui.available_width());
+                                match self.screen {
+                                    Screen::Care => {}
+                                    Screen::Cleanup => cleanup_screen(ui, self),
+                                    Screen::Apps => apps_screen(ui, self),
+                                    Screen::Performance => performance_screen(ui, self),
+                                    Screen::Protection => protection_screen(ui, self),
+                                    Screen::Malware => malware_screen(ui, self),
+                                    Screen::Clutter => clutter_screen(ui, self),
+                                    Screen::Cloud => cloud_screen(ui, self),
+                                    Screen::Assistant => assistant_screen(ui, self),
+                                    Screen::Space => {}
+                                }
+                            });
+                    }
+                });
             });
 
         self.confirm_modal(ctx);
@@ -954,329 +1133,768 @@ impl eframe::App for ScanApp {
 
 // ───────────────────────────── sidebar chrome ─────────────────────────────
 
-fn sidebar_brand(ui: &mut egui::Ui, layout: UiLayout) {
-    if layout.compact {
-        ui.vertical_centered(|ui| {
-            let (mark_rect, response) = ui.allocate_exact_size(Vec2::splat(S32), Sense::hover());
-            paint_brand_mark(ui.painter(), mark_rect, ACCENT_TEXT);
-            response.on_hover_text("Sable — Mac cleaner and tune-up");
-        });
-        return;
-    }
-    ui.horizontal(|ui| {
-        let (mark_rect, _) = ui.allocate_exact_size(Vec2::splat(S32), Sense::hover());
-        paint_brand_mark(ui.painter(), mark_rect, ACCENT_TEXT);
-        ui.add_space(S8);
-        ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing.y = S4;
-            ui.label(RichText::new("Sable").font(heading_font(TITLE)).color(TEXT));
-            ui.label(RichText::new("For your Mac").size(CAPTION).line_height(Some(lh(CAPTION))).color(TEXT_2));
-        });
-    });
+struct Tone {
+    top: Color32,
+    bottom: Color32,
+    accent: Color32,
 }
 
-fn sidebar_nav_item(ui: &mut egui::Ui, screen: Screen, active: bool, layout: UiLayout) -> egui::Response {
-    let icon_color = if active { ACCENT_TEXT } else { TEXT_2 };
-    let title_color = if active { TEXT } else { TEXT_2 };
-    let bg = if active {
-        ACCENT_SOFT_SIDEBAR
-    } else {
-        Color32::TRANSPARENT
-    };
+fn tone_for(screen: Screen) -> Tone {
+    match screen {
+        Screen::Clutter => Tone {
+            top: GRAD_TEAL_TOP,
+            bottom: GRAD_TEAL_BOTTOM,
+            accent: GRAD_TEAL_ACCENT,
+        },
+        Screen::Apps => Tone {
+            top: GRAD_BLUE_TOP,
+            bottom: GRAD_BLUE_BOTTOM,
+            accent: GRAD_BLUE_ACCENT,
+        },
+        Screen::Performance => Tone {
+            top: GRAD_ORANGE_TOP,
+            bottom: GRAD_ORANGE_BOTTOM,
+            accent: GRAD_ORANGE_ACCENT,
+        },
+        Screen::Care | Screen::Space => Tone {
+            top: GRAD_PURPLE_TOP,
+            bottom: GRAD_PURPLE_BOTTOM,
+            accent: GRAD_PURPLE_ACCENT,
+        },
+        Screen::Cleanup => Tone {
+            top: GRAD_GREEN_TOP,
+            bottom: GRAD_GREEN_BOTTOM,
+            accent: GRAD_GREEN_ACCENT,
+        },
+        Screen::Protection => Tone {
+            top: GRAD_SLATE_TOP,
+            bottom: GRAD_SLATE_BOTTOM,
+            accent: GRAD_SLATE_ACCENT,
+        },
+        Screen::Malware => Tone {
+            top: GRAD_WINE_TOP,
+            bottom: GRAD_WINE_BOTTOM,
+            accent: GRAD_WINE_ACCENT,
+        },
+        Screen::Cloud => Tone {
+            top: GRAD_SKY_TOP,
+            bottom: GRAD_SKY_BOTTOM,
+            accent: GRAD_SKY_ACCENT,
+        },
+        Screen::Assistant => Tone {
+            top: GRAD_INDIGO_TOP,
+            bottom: GRAD_INDIGO_BOTTOM,
+            accent: GRAD_INDIGO_ACCENT,
+        },
+    }
+}
 
-    let inner = egui::Frame::none()
-        .fill(bg)
-        .rounding(r_sm())
-        .inner_margin(m_ltrb(
-            if active { S16 } else { S8 },
-            S8,
-            S8,
-            S8,
-        ))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            if layout.compact {
-                ui.vertical_centered(|ui| {
-                    let (icon_rect, _) = ui.allocate_exact_size(Vec2::splat(S24), Sense::hover());
-                    paint_screen_icon(ui.painter(), screen, icon_rect, icon_color);
-                });
+fn shows_dock(screen: Screen) -> bool {
+    matches!(
+        screen,
+        Screen::Clutter | Screen::Apps | Screen::Performance | Screen::Space
+    )
+}
+
+fn dock_label(screen: Screen) -> &'static str {
+    if screen == Screen::Care { "Run" } else { "Scan" }
+}
+
+fn paint_vgrad(painter: &egui::Painter, rect: Rect, top: Color32, bottom: Color32) {
+    if rect.width() <= 0.0 || rect.height() <= 0.0 {
+        return;
+    }
+    let mut mesh = egui::Mesh::default();
+    mesh.colored_vertex(rect.left_top(), top);
+    mesh.colored_vertex(rect.right_top(), top);
+    mesh.colored_vertex(rect.right_bottom(), bottom);
+    mesh.colored_vertex(rect.left_bottom(), bottom);
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    painter.add(Shape::mesh(mesh));
+}
+
+fn paint_dock(ctx: &egui::Context, label: &str, accent: Color32, enabled: bool) -> bool {
+    let mut clicked = false;
+    egui::Area::new(egui::Id::new("dock"))
+        .order(egui::Order::Foreground)
+        .anchor(Align2::CENTER_BOTTOM, [0.0, -S24])
+        .show(ctx, |ui| {
+            let (rect, response) = ui.allocate_exact_size(Vec2::splat(CTA_H + S16), Sense::click());
+            let center = rect.center();
+            let radius = CTA_H / 2.0;
+            let painter = ui.painter().with_clip_rect(rect);
+            painter.circle_filled(center, radius + S8, with_alpha(accent, 48));
+            let pressed = enabled && response.is_pointer_button_down_on();
+            let fill = if !enabled {
+                with_alpha(accent, 140)
+            } else if pressed {
+                mix(INK, accent, 28)
+            } else if response.hovered() {
+                mix(WHITE, accent, 16)
             } else {
-                ui.horizontal(|ui| {
-                    let (icon_rect, _) = ui.allocate_exact_size(Vec2::splat(S24), Sense::hover());
-                    paint_screen_icon(ui.painter(), screen, icon_rect, icon_color);
-                    ui.add_space(S8);
-                    ui.vertical(|ui| {
-                        ui.spacing_mut().item_spacing.y = S4;
-                        ui.label(RichText::new(screen.label()).font(heading_font(BODY)).color(title_color));
-                        ui.label(RichText::new(screen.nav_hint()).size(CAPTION).line_height(Some(lh(CAPTION))).color(TEXT_2));
-                    });
-                });
+                accent
+            };
+            painter.circle_filled(center, radius, fill);
+            let ring = if response.has_focus() {
+                focus_stroke()
+            } else {
+                Stroke::new(STROKE_W, with_alpha(WHITE, 200))
+            };
+            painter.circle_stroke(center, radius, ring);
+            painter.text(center, Align2::CENTER_CENTER, label, font_semi(BODY), WHITE);
+            if enabled && response.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
+            clicked = enabled && response.clicked();
         });
+    clicked
+}
 
-    let mut response = inner.response.interact(Sense::click());
+fn rail_groups() -> [(&'static str, &'static [Screen]); 4] {
+    [
+        ("Home", &[Screen::Care]),
+        ("Clean", &[Screen::Cleanup, Screen::Clutter, Screen::Space]),
+        (
+            "Mac",
+            &[
+                Screen::Apps,
+                Screen::Performance,
+                Screen::Cloud,
+                Screen::Assistant,
+            ],
+        ),
+        ("Security", &[Screen::Protection, Screen::Malware]),
+    ]
+}
+
+fn rail_brand(ui: &mut egui::Ui) {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), S32), Sense::hover());
+    let mark = Rect::from_min_size(rect.min + v2(S16, 0.0), Vec2::splat(S32));
+    paint_brand_mark(ui.painter(), mark, WHITE);
+    ui.painter().text(
+        mark.right_center() + v2(S8, 0.0),
+        Align2::LEFT_CENTER,
+        "Sable",
+        font_semi(TITLE),
+        WHITE,
+    );
+    response.on_hover_text("Sable — Mac cleaner and tune-up");
+}
+
+fn rail_group_label(ui: &mut egui::Ui, label: &str) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), S24), Sense::hover());
+    ui.painter().text(
+        rect.left_center() + v2(S16, 0.0),
+        Align2::LEFT_CENTER,
+        label,
+        font_semi(CAPTION),
+        CARD_MUTED,
+    );
+}
+
+fn rail_nav_item(ui: &mut egui::Ui, screen: Screen, active: bool, accent: Color32) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), BTN_MIN_H), Sense::click());
+    let pill = rect.shrink2(v2(S8, S4));
     if active {
-        let bar = Rect::from_min_size(
-            response.rect.left_top() - Vec2::new(S4, 0.0),
-            Vec2::new(S4, response.rect.height()),
-        );
-        ui.painter().rect_filled(bar, r_xs(), ACCENT);
+        ui.painter().rect_filled(pill, r_sm(), with_alpha(WHITE, 32));
+        let bar = Rect::from_min_max(pill.left_top(), pos2(pill.left() + S4, pill.bottom()));
+        ui.painter().rect_filled(bar, r_xs(), accent);
+    } else if response.hovered() {
+        ui.painter().rect_filled(pill, r_sm(), with_alpha(WHITE, 16));
     }
-    if layout.compact {
-        response = response.on_hover_text(format!("{}\n{}", screen.label(), screen.nav_hint()));
+    if response.has_focus() {
+        ui.painter().rect_stroke(pill, r_sm(), focus_stroke());
     }
+    let icon = Rect::from_center_size(pos2(pill.left() + S16, pill.center().y), Vec2::splat(18.0));
+    paint_screen_icon(
+        ui.painter(),
+        screen,
+        icon,
+        if active { WHITE } else { with_alpha(WHITE, 220) },
+    );
+    ui.painter().text(
+        icon.right_center() + v2(S8, 0.0),
+        Align2::LEFT_CENTER,
+        screen.label(),
+        font_regular(SMALL),
+        WHITE,
+    );
+    let response = response.on_hover_text(format!("{}\n{}", screen.label(), screen.nav_hint()));
     if response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     response
 }
 
+fn rail_status(ui: &mut egui::Ui, granted: bool, status: &str, busy: bool, pulse: f64) {
+    let (color, text) = status_look(status, busy, pulse);
+    rail_meta(
+        ui,
+        if granted { SUCCESS } else { WARN },
+        if granted { "Full access" } else { "Limited access" },
+        if granted { "Full disk access" } else { "Limited disk access" },
+    );
+    rail_meta(ui, color, text, text);
+}
+
+fn rail_meta(ui: &mut egui::Ui, color: Color32, label: &str, tip: &str) {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), S32), Sense::hover());
+    let center = rect.left_center() + v2(S16 + 5.0, 0.0);
+    ui.painter().circle_filled(center, 5.0, color);
+    ui.painter().text(
+        center + v2(S12, 0.0),
+        Align2::LEFT_CENTER,
+        label,
+        font_regular(CAPTION),
+        WHITE,
+    );
+    response.on_hover_text(tip);
+}
+
+fn status_look(status: &str, busy: bool, time: f64) -> (Color32, &'static str) {
+    let (color, text) = match status {
+        "paused" => (WARN, "Paused"),
+        "canceling" => (DANGER, "Stopping..."),
+        "cleaning" => (WARN, "Moving to Trash..."),
+        _ if busy => (WHITE, "Working..."),
+        _ => (with_alpha(WHITE, 180), "Ready"),
+    };
+    let alpha = if busy { 0.45 + 0.55 * (time * 3.0).sin().abs() as f32 } else { 1.0 };
+    (with_alpha(color, (alpha * 255.0) as u8), text)
+}
+
 // ───────────────────────────── screens ─────────────────────────────
 
 fn care_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
-    page_header(
-        ui,
-        app.layout,
-        Screen::Care,
-        "A quick health check of your Mac. This page only looks. It never changes or deletes anything.",
-    );
-    safety(ui, Safety::ReadOnly);
-    banner(ui, app);
-
-    let mut goto = None;
-    let mut rerun = false;
-    let busy = app.busy;
+    let area = ui.available_rect_before_wrap();
+    let footer_h = S16 + CTA_H + S16;
+    let body = Rect::from_min_max(area.min, pos2(area.right(), area.bottom() - footer_h));
+    let footer = Rect::from_min_max(pos2(area.left(), area.bottom() - footer_h), area.max);
 
     let reclaim = if app.junk.is_empty() {
-        app.care.as_ref().map(|r| r.cleanup_bytes)
+        app.care.as_ref().map(|report| report.cleanup_bytes)
     } else {
-        Some(app.junk.iter().map(|r| r.bytes).sum())
+        Some(app.junk.iter().map(|root| root.bytes).sum())
     };
+    let threats = app.threat.as_ref().map(|report| report.hits.len());
+    let agents = app.care.as_ref().map(|report| report.agent_count).unwrap_or(app.agents.len());
+    let apps = app.care.as_ref().map(|report| report.app_count).unwrap_or(app.apps.len());
+    let leftovers = if app.leftovers_done { Some(app.leftovers.len()) } else { None };
+    let downloads = if app.loaded.contains(&Screen::Clutter) {
+        Some(app.clutter.len())
+    } else {
+        None
+    };
+    let threats_clear = matches!(threats, Some(0));
 
-    let layout = app.layout;
-    hero(ui, |ui| match reclaim {
-        Some(bytes) => {
-            let size = HERO;
-            if layout.compact {
-                label_small(ui, "YOU CAN FREE UP");
-                ui.label(RichText::new(format_bytes(bytes)).size(size).strong().color(TEXT));
+    let cards = [
+        CareCard {
+            screen: Screen::Cleanup,
+            title: "Cleanup",
+            metric: reclaim.map(format_bytes).unwrap_or_else(|| "—".into()),
+            detail: "of junk to clean".into(),
+            icon: Screen::Cleanup,
+            accent: GRAD_GREEN_ACCENT,
+            action: Some("Review"),
+            selectable: true,
+            success: false,
+        },
+        CareCard {
+            screen: Screen::Malware,
+            title: "Protection",
+            metric: match threats {
+                Some(0) => "No threats found".into(),
+                Some(count) => format!("{count} threats"),
+                None => "Not scanned".into(),
+            },
+            detail: match threats {
+                Some(0) => "You're clear".into(),
+                Some(_) => "to remove".into(),
+                None => "Threat scan has not run".into(),
+            },
+            icon: Screen::Malware,
+            accent: GRAD_WINE_ACCENT,
+            action: if threats_clear { None } else { Some("Review") },
+            selectable: !threats_clear,
+            success: threats_clear,
+        },
+        CareCard {
+            screen: Screen::Performance,
+            title: "Performance",
+            metric: format!("{agents} items"),
+            detail: "to review".into(),
+            icon: Screen::Performance,
+            accent: GRAD_ORANGE_ACCENT,
+            action: Some("Review"),
+            selectable: true,
+            success: false,
+        },
+        CareCard {
+            screen: Screen::Apps,
+            title: "Applications",
+            metric: match leftovers {
+                Some(count) if count > 0 => format!("{count} leftover files"),
+                _ => format!("{apps} apps"),
+            },
+            detail: "installed".into(),
+            icon: Screen::Apps,
+            accent: GRAD_BLUE_ACCENT,
+            action: Some("Browse"),
+            selectable: false,
+            success: false,
+        },
+        CareCard {
+            screen: Screen::Clutter,
+            title: "My Clutter",
+            metric: match downloads {
+                Some(count) => format!("{count} large downloads"),
+                None => "Not scanned".into(),
+            },
+            detail: match downloads {
+                Some(_) => "to remove".into(),
+                None => "Large files in Downloads".into(),
+            },
+            icon: Screen::Clutter,
+            accent: GRAD_TEAL_ACCENT,
+            action: Some("Review"),
+            selectable: true,
+            success: false,
+        },
+    ];
+
+    let selected = cards.iter().filter(|card| card.selectable && app.care_picks.contains(&card.screen)).count();
+    let mut goto = None;
+    let mut run = false;
+
+    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(body), |ui| {
+        egui::ScrollArea::vertical()
+            .id_salt("care_body")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
+                banner(ui, app);
                 ui.label(
-                    RichText::new("of temporary files (caches and logs). Apps rebuild what they need.")
-                        .size(BODY)
-                        .line_height(Some(lh(BODY)))
-                        .color(TEXT_2),
+                    RichText::new("Your tasks are ready to run.")
+                        .font(heading_font(H2))
+                        .color(WHITE),
                 );
-                ui.add_space(S8);
-                if primary(ui, "Review and clean up", true).clicked() {
-                    goto = Some(Screen::Cleanup);
+                ui.add_space(S16);
+                care_summary(ui, app, reclaim, selected);
+                ui.add_space(S16);
+
+                if app.care.is_none() && app.busy && app.care_followups.is_empty() {
+                    ui.vertical_centered(|ui| loading_line(ui, "Checking your Mac..."));
+                    return;
                 }
-            } else {
-                ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
-                        label_small(ui, "YOU CAN FREE UP");
-                        ui.label(RichText::new(format_bytes(bytes)).size(size).strong().color(TEXT));
-                        ui.label(
-                            RichText::new("of temporary files (caches and logs). Apps rebuild what they need.")
-                                .size(BODY)
-                                .line_height(Some(lh(BODY)))
-                                .color(TEXT_2),
-                        );
-                    });
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if primary(ui, "Review and clean up", true).clicked() {
-                            goto = Some(Screen::Cleanup);
+
+                let cols = app.layout.grid_cols(3);
+                let rows = cards.len().div_ceil(cols);
+                let gaps = (rows.saturating_sub(1) as f32) * S16;
+                let raw = (ui.available_height() - gaps) / rows as f32;
+                let card_h = raw.clamp(176.0, 220.0);
+                let slack = (ui.available_height() - card_h * rows as f32 - gaps).max(0.0);
+                ui.add_space(slack * 0.25);
+
+                let mut index = 0;
+                while index < cards.len() {
+                    let span = cols.min(cards.len() - index);
+                    let gap = S16;
+                    let col_w = (ui.available_width() - gap * (span.saturating_sub(1) as f32)) / span as f32;
+                    let previous_gap = ui.spacing().item_spacing.x;
+                    ui.spacing_mut().item_spacing.x = gap;
+                    ui.horizontal(|ui| {
+                        for column in 0..span {
+                            let card = &cards[index + column];
+                            ui.allocate_ui_with_layout(
+                                Vec2::new(col_w, card_h),
+                                Layout::top_down(Align::Min),
+                                |ui| {
+                                    if care_task_card(ui, app, card, card_h) {
+                                        goto = Some(card.screen);
+                                    }
+                                },
+                            );
                         }
                     });
-                });
-            }
-        }
-        None => loading_line(ui, "Checking your Mac..."),
-    });
-    ui.add_space(S16);
-
-    if let Some(report) = &app.care {
-        let (apps, agents, access) = (report.app_count, report.agent_count, report.access);
-        let granted = access == AccessStatus::Granted;
-        match layout.grid_cols(3) {
-            1 => {
-                summary_card(
-                    ui,
-                    "APPS",
-                    &format_count(apps as u64),
-                    "apps installed",
-                    "Browse apps",
-                    busy,
-                    &mut || goto = Some(Screen::Apps),
-                );
-                summary_card(
-                    ui,
-                    "STARTUP ITEMS",
-                    &format_count(agents as u64),
-                    "background items start when you log in",
-                    "See startup items",
-                    busy,
-                    &mut || goto = Some(Screen::Performance),
-                );
-                card(ui, |ui| disk_access_card(ui, granted));
-            }
-            2 => {
-                ui.columns(2, |cols| {
-                    summary_card(
-                        &mut cols[0],
-                        "APPS",
-                        &format_count(apps as u64),
-                        "apps installed",
-                        "Browse apps",
-                        busy,
-                        &mut || goto = Some(Screen::Apps),
-                    );
-                    summary_card(
-                        &mut cols[1],
-                        "STARTUP ITEMS",
-                        &format_count(agents as u64),
-                        "background items start when you log in",
-                        "See startup items",
-                        busy,
-                        &mut || goto = Some(Screen::Performance),
-                    );
-                });
-                card(ui, |ui| disk_access_card(ui, granted));
-            }
-            _ => {
-                ui.columns(3, |cols| {
-                    summary_card(
-                        &mut cols[0],
-                        "APPS",
-                        &format_count(apps as u64),
-                        "apps installed",
-                        "Browse apps",
-                        busy,
-                        &mut || goto = Some(Screen::Apps),
-                    );
-                    summary_card(
-                        &mut cols[1],
-                        "STARTUP ITEMS",
-                        &format_count(agents as u64),
-                        "background items start when you log in",
-                        "See startup items",
-                        busy,
-                        &mut || goto = Some(Screen::Performance),
-                    );
-                    card(&mut cols[2], |ui| disk_access_card(ui, granted));
-                });
-            }
-        }
-        ui.add_space(S8);
-    }
-
-    ui.add_space(S8);
-    section(ui, "WHERE TO GO NEXT");
-    for (screen, hint) in [
-        (Screen::Clutter, "Find large files in Downloads you may no longer need."),
-        (Screen::Space, "See which folders are using the most disk space."),
-        (Screen::Apps, "Check what an app leaves behind in your Library."),
-    ] {
-        let r = row(ui, false, true, |ui| {
-            ui.horizontal(|ui| {
-                let (icon_rect, _) = ui.allocate_exact_size(Vec2::splat(S24), Sense::hover());
-                paint_screen_icon(ui.painter(), screen, icon_rect, ACCENT_TEXT);
-                ui.add_space(S8);
-                ui.vertical(|ui| {
-                    ui.label(RichText::new(screen.label()).strong().color(TEXT));
-                    ui.label(RichText::new(hint).color(TEXT_2).size(SMALL).line_height(Some(lh(SMALL))));
-                });
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.label(RichText::new("Open").color(ACCENT_TEXT));
-                });
+                    ui.spacing_mut().item_spacing.x = previous_gap;
+                    index += span;
+                    if index < cards.len() {
+                        ui.add_space(S16);
+                    }
+                }
             });
+    });
+
+    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(footer), |ui| {
+        let line = Rect::from_min_max(footer.min, pos2(footer.right(), footer.top() + STROKE_W));
+        ui.painter().rect_filled(line, 0.0, CARD_LINE);
+        ui.vertical_centered(|ui| {
+            ui.add_space(S16);
+            let label = if app.busy { "Running" } else { "Run" };
+            if contrast_button(ui, "care-run", label, !app.busy && selected > 0, 160.0).clicked() {
+                run = true;
+            }
         });
-        if r.clicked() {
-            goto = Some(screen);
-        }
-    }
+    });
 
-    ui.add_space(S8);
-    if ghost(ui, "Run the check again", !busy).clicked() {
-        rerun = true;
-    }
-
-    if rerun {
-        app.loaded.remove(&Screen::Care);
-        app.loaded.remove(&Screen::Cleanup);
+    if run {
+        app.run_checked_care();
     }
     if let Some(screen) = goto {
         app.go(screen);
     }
 }
 
+fn care_summary(ui: &mut egui::Ui, app: &ScanApp, reclaim: Option<u64>, selected: usize) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), CTA_H), Sense::hover());
+    ui.painter().rect_filled(rect, r_md(), CARD_HOME);
+    ui.painter().rect_stroke(rect, r_md(), stroke(CARD_LINE));
+    let text_rect = rect.shrink2(v2(S16, 0.0));
+    let size = reclaim.map(format_bytes).unwrap_or_else(|| "—".into());
+    let task_label = if selected == 1 {
+        "1 task selected".to_string()
+    } else {
+        format!("{selected} tasks selected")
+    };
+    let text = format!("Last scan: {}  ·  {size} reclaimable  ·  {task_label}", scan_age(app.last_refresh));
+    ui.painter().with_clip_rect(text_rect).text(
+        text_rect.left_center(),
+        Align2::LEFT_CENTER,
+        text,
+        font_regular(SMALL),
+        WHITE,
+    );
+}
+
+fn scan_age(at: Option<Instant>) -> String {
+    let Some(at) = at else {
+        return "not yet".into();
+    };
+    let secs = at.elapsed().as_secs();
+    if secs < 10 {
+        "just now".into()
+    } else if secs < 60 {
+        format!("{secs}s ago")
+    } else if secs < 3600 {
+        format!("{} min ago", secs / 60)
+    } else {
+        format!("{} hr ago", secs / 3600)
+    }
+}
+
+struct CareCard {
+    screen: Screen,
+    title: &'static str,
+    metric: String,
+    detail: String,
+    icon: Screen,
+    accent: Color32,
+    action: Option<&'static str>,
+    selectable: bool,
+    success: bool,
+}
+
+fn care_task_card(ui: &mut egui::Ui, app: &mut ScanApp, card: &CareCard, card_h: f32) -> bool {
+    let width = ui.available_width();
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, card_h), Sense::hover());
+    let painter = ui.painter();
+    painter.rect_filled(rect, r_md(), CARD_HOME);
+    painter.rect_stroke(rect, r_md(), stroke(CARD_LINE));
+    let bar = Rect::from_min_size(
+        pos2(rect.left() + S8, rect.top() + S16),
+        Vec2::new(S4, rect.height() - S32),
+    );
+    painter.rect_filled(bar, r_xs(), card.accent);
+
+    let inner = Rect::from_min_max(
+        rect.min + v2(S16 + S8, S16),
+        rect.max - v2(S16, S16),
+    );
+    let mut review = false;
+    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(inner), |ui| {
+        let head = Rect::from_min_max(inner.min, pos2(inner.right(), inner.top() + S24));
+        if card.selectable {
+            let check = Rect::from_min_size(head.min, Vec2::splat(S24));
+            let on = app.care_picks.contains(&card.screen);
+            if task_check(ui, check, card.title, on, !app.busy).clicked() {
+                if on {
+                    app.care_picks.remove(&card.screen);
+                } else {
+                    app.care_picks.insert(card.screen);
+                }
+            }
+        }
+        let title_x = if card.selectable { head.left() + S24 + S8 } else { head.left() };
+        ui.painter().text(
+            pos2(title_x, head.center().y),
+            Align2::LEFT_CENTER,
+            card.title,
+            font_regular(CAPTION),
+            CARD_MUTED,
+        );
+        let icon = Rect::from_center_size(pos2(head.right() - S12, head.center().y), Vec2::splat(22.0));
+        paint_screen_icon(ui.painter(), card.icon, icon, card.accent);
+
+        let metric_color = if card.success { SUCCESS } else { WHITE };
+        ui.painter().text(
+            pos2(inner.left(), inner.top() + S32 + S4),
+            Align2::LEFT_TOP,
+            &card.metric,
+            font_semi(STAT),
+            metric_color,
+        );
+        ui.painter().text(
+            pos2(inner.left(), inner.top() + S32 + S4 + STAT + S4),
+            Align2::LEFT_TOP,
+            &card.detail,
+            font_regular(SMALL),
+            CARD_MUTED,
+        );
+
+        if let Some(label) = card.action {
+            let galley = ui.painter().layout_no_wrap(label.to_owned(), font_semi(SMALL), INK);
+            let w = (galley.size().x + S16 * 2.0).max(96.0);
+            let btn = Rect::from_min_size(
+                pos2(inner.left(), inner.bottom() - BTN_MIN_H),
+                Vec2::new(w, BTN_MIN_H),
+            );
+            if contrast_button_at(ui, btn, &format!("care-{}", card.title), label, !app.busy).clicked() {
+                review = true;
+            }
+        }
+    });
+    review
+}
+
+fn task_check(ui: &mut egui::Ui, rect: Rect, salt: &str, on: bool, enabled: bool) -> egui::Response {
+    let sense = if enabled { Sense::click() } else { Sense::hover() };
+    let response = ui.interact(rect, Id::new(("care-check", salt)), sense);
+    let box_rect = Rect::from_center_size(rect.center(), Vec2::splat(S16));
+    let painter = ui.painter();
+    if on {
+        painter.rect_filled(box_rect, r_xs(), if enabled { WHITE } else { with_alpha(WHITE, 140) });
+        let a = box_rect.left_center() + v2(3.0, 1.0);
+        let b = box_rect.center() + v2(-1.0, 4.0);
+        let c = box_rect.right_center() + v2(-3.0, -4.0);
+        painter.line_segment([a, b], Stroke::new(2.0, INK));
+        painter.line_segment([b, c], Stroke::new(2.0, INK));
+    } else {
+        let fill = if response.hovered() { with_alpha(WHITE, 36) } else { Color32::TRANSPARENT };
+        painter.rect_filled(box_rect, r_xs(), fill);
+        painter.rect_stroke(box_rect, r_xs(), Stroke::new(FOCUS_W, if enabled { WHITE } else { CARD_MUTED }));
+    }
+    if response.has_focus() {
+        painter.rect_stroke(box_rect.expand(S4), r_xs(), focus_stroke());
+    }
+    if enabled && response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    response
+}
+
+fn contrast_button(ui: &mut egui::Ui, salt: &str, label: &str, enabled: bool, min_w: f32) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), font_semi(BODY), INK);
+    let w = (galley.size().x + S16 * 2.0).max(min_w);
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, CTA_H), Sense::hover());
+    contrast_button_at(ui, rect, salt, label, enabled)
+}
+
+fn contrast_button_at(ui: &mut egui::Ui, rect: Rect, salt: &str, label: &str, enabled: bool) -> egui::Response {
+    let sense = if enabled { Sense::click() } else { Sense::hover() };
+    let response = ui.interact(rect, Id::new(("contrast", salt)), sense);
+    let pressed = enabled && response.is_pointer_button_down_on();
+    let fill = if !enabled {
+        BTN_DISABLED
+    } else if pressed {
+        BTN_PRESSED
+    } else if response.hovered() {
+        BTN_HOVER
+    } else {
+        WHITE
+    };
+    let text = if enabled { INK } else { CARD_MUTED };
+    ui.painter().rect_filled(rect, r_pill(), fill);
+    if enabled && response.has_focus() {
+        ui.painter().rect_stroke(rect.expand(S4), r_pill(), focus_stroke());
+    }
+    ui.painter().text(rect.center(), Align2::CENTER_CENTER, label, font_semi(BODY), text);
+    if enabled && response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    response
+}
+
+fn home_label(home: &Path) -> String {
+    home.file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("Home")
+        .to_string()
+}
+
+fn volume_menu(ui: &mut egui::Ui, app: &mut ScanApp) {
+    let home = home_label(&app.home);
+    let selected = if app.landing_volume == 0 {
+        home.clone()
+    } else {
+        "Macintosh HD".into()
+    };
+    egui::ComboBox::from_id_salt("landing_volume")
+        .width(200.0)
+        .selected_text(RichText::new(selected).color(WHITE))
+        .show_ui(ui, |ui| {
+            ui.selectable_value(&mut app.landing_volume, 0, home);
+            ui.selectable_value(&mut app.landing_volume, 1, "Macintosh HD");
+        });
+}
+
+fn module_landing(
+    ui: &mut egui::Ui,
+    app: &mut ScanApp,
+    hero: icons::HeroKind,
+    title: &str,
+    subtitle: &str,
+    items: &[(&str, icons::UiIcon)],
+) {
+    let accent = tone_for(app.screen).accent;
+    ui.add_space(S32);
+    let wide = !app.layout.compact && ui.available_width() > 820.0;
+    let mut copy = |ui: &mut egui::Ui| {
+        ui.label(RichText::new(title).font(heading_font(HERO)).color(WHITE));
+        ui.add_space(S8);
+        ui.label(
+            RichText::new(subtitle)
+                .size(BODY)
+                .line_height(Some(lh(BODY)))
+                .color(with_alpha(WHITE, 210)),
+        );
+        ui.add_space(S16);
+        for (label, icon) in items {
+            ui.horizontal(|ui| {
+                let (icon_rect, _) = ui.allocate_exact_size(Vec2::splat(18.0), Sense::hover());
+                paint_ui_icon(ui.painter(), *icon, icon_rect, with_alpha(WHITE, 230));
+                ui.label(RichText::new(*label).size(BODY).color(WHITE));
+            });
+            ui.add_space(S4);
+        }
+        ui.add_space(S12);
+        volume_menu(ui, app);
+    };
+    let art = |ui: &mut egui::Ui| {
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(260.0), Sense::hover());
+        icons::paint_hero(ui.painter(), hero, rect, accent);
+    };
+    if wide {
+        ui.horizontal(|ui| {
+            ui.add_space(S32);
+            art(ui);
+            ui.add_space(S32);
+            ui.vertical(|ui| {
+                ui.set_width(380.0);
+                copy(ui);
+            });
+        });
+    } else {
+        ui.vertical_centered(|ui| {
+            art(ui);
+            ui.add_space(S16);
+            ui.vertical(|ui| {
+                ui.set_max_width(420.0);
+                copy(ui);
+            });
+        });
+    }
+    ui.add_space(S24);
+}
+
 fn cleanup_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
-    page_header(
+    let accent = accent_for_screen(Screen::Cleanup);
+    let busy = app.busy;
+    banner(ui, app);
+    let remeasure = page_header_with_action(
         ui,
         app.layout,
         Screen::Cleanup,
-        "Apps keep temporary files (caches and logs) to run faster. They are safe to remove, and apps recreate what they need. Review each group, then move it to the Trash.",
+        "Apps keep temporary files (caches and logs) to run faster. They are safe to remove, and apps recreate what they need.",
+        "Measure again",
+        !busy && !app.junk.is_empty(),
     );
-    safety(ui, Safety::Trash);
-    banner(ui, app);
+    if remeasure {
+        app.loaded.remove(&Screen::Cleanup);
+        app.load(Screen::Cleanup);
+    }
 
-    let busy = app.busy;
     if app.junk.is_empty() {
         loading_card(ui, busy, "Measuring caches and logs...", "Nothing to show yet.");
         return;
     }
 
-    let total: u64 = app.junk.iter().map(|r| r.bytes).sum();
-    let biggest = app.junk.iter().map(|r| r.bytes).max().unwrap_or(1).max(1);
-    hero(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                label_small(ui, "TOTAL YOU CAN CLEAN");
-                ui.label(RichText::new(format_bytes(total)).size(HERO).strong().color(TEXT));
-            });
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ghost(ui, "Measure again", !busy).clicked() {
-                    app.loaded.remove(&Screen::Cleanup);
-                }
-            });
-        });
-    });
-    ui.add_space(S16);
+    let total: u64 = app.junk.iter().filter(|r| r.exists).map(|r| r.bytes).sum();
+    ui.label(
+        RichText::new(format!("{} reclaimable", format_bytes(total)))
+            .size(H2)
+            .strong()
+            .color(WHITE)
+            .monospace(),
+    );
+    ui.add_space(S12);
     section(ui, "WHAT TAKES THE SPACE");
 
     let mut request = None;
     let mut reveal_path = None;
-    for root in &app.junk {
-        card(ui, |ui| {
+    let (present, missing): (Vec<_>, Vec<_>) = app.junk.iter().partition(|r| r.exists);
+    scroll_list(ui, "junk_list", ui.available_height() - S8, |ui| {
+        for root in present {
+            let mut show = false;
+            let mut trash = false;
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
                     ui.label(RichText::new(&root.label).strong().size(TITLE));
-                    ui.label(RichText::new(describe_junk(&root.label)).color(TEXT_2).size(SMALL).line_height(Some(lh(SMALL))));
+                    ui.label(
+                        RichText::new(describe_junk(&root.label))
+                            .color(TEXT_SECONDARY)
+                            .size(SMALL)
+                            .line_height(Some(lh(SMALL))),
+                    );
                 });
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if root.exists {
-                        if ghost(ui, "Move to Trash", !busy && root.bytes > 0).clicked() {
-                            request = Some(Confirm {
-                                heading: format!("Move {} to the Trash?", root.label.to_lowercase()),
-                                body: format!(
-                                    "{} will be moved to the Trash. Apps recreate these files when needed, and you can put them back from the Trash.",
-                                    format_bytes(root.bytes)
-                                ),
-                                action: "Move to Trash",
-                                kind: ConfirmKind::TrashRoot(root.path.clone()),
-                            });
-                        }
-                        if ghost(ui, "Show", true).clicked() {
-                            reveal_path = Some(root.path.clone());
-                        }
-                        ui.label(RichText::new(format_bytes(root.bytes)).strong().size(TITLE).color(TEXT));
-                    } else {
-                        ui.label(RichText::new("Not on this Mac").color(TEXT_2));
-                    }
-                });
+                list_actions(
+                    ui,
+                    &format_bytes(root.bytes),
+                    true,
+                    !busy && root.bytes > 0,
+                    accent,
+                    &root.label,
+                    &mut show,
+                    &mut trash,
+                );
             });
-            if root.exists {
-                ui.add_space(S4);
-                meter(ui, root.bytes as f32 / biggest as f32, ACCENT);
+            ui.add_space(S8);
+            if show {
+                reveal_path = Some(root.path.clone());
+            }
+            if trash {
+                request = Some(Confirm {
+                    heading: format!("Move {} to the Trash?", root.label.to_lowercase()),
+                    body: format!(
+                        "{} will be moved to the Trash. Apps recreate these files when needed.",
+                        format_bytes(root.bytes)
+                    ),
+                    action: "Move to Trash",
+                    kind: ConfirmKind::TrashRoot(root.path.clone()),
+                });
+            }
+        }
+    });
+    if !missing.is_empty() {
+        ui.add_space(S8);
+        section(ui, "NOT FOUND ON THIS MAC");
+        card(ui, |ui| {
+            for root in missing {
+                ui.label(
+                    RichText::new(&root.label)
+                        .size(SMALL)
+                        .color(TEXT_SECONDARY),
+                );
             }
         });
     }
@@ -1289,36 +1907,45 @@ fn cleanup_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
 }
 
 fn apps_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
-    page_header(
+    let accent = accent_for_screen(Screen::Apps);
+    let busy = app.busy;
+    banner(ui, app);
+    let scan = page_header_with_action(
         ui,
         app.layout,
         Screen::Apps,
-        "Everything installed on this Mac. Pick an app to see the files it keeps in your Library, which stay behind even after you drag the app to the Trash.",
+        "Review installed applications and leftover files in your Library.",
+        "Scan",
+        !busy && !app.loaded.contains(&Screen::Apps),
     );
-    safety(ui, Safety::ReadOnly);
-    banner(ui, app);
+    if scan {
+        app.load(Screen::Apps);
+    }
+    if !app.loaded.contains(&Screen::Apps) {
+        return;
+    }
 
-    let busy = app.busy;
     if app.apps.is_empty() {
         loading_card(ui, busy, "Looking for installed apps...", "No apps found in /Applications or ~/Applications.");
         return;
     }
 
-    ui.horizontal(|ui| {
-        ui.add(
-            egui::TextEdit::singleline(&mut app.app_filter)
-                .hint_text("Search by app name")
-                .desired_width(320.0)
-                .margin(v2(S8, S8)),
-        );
-        ui.label(RichText::new(format!("{} apps", app.apps.len())).color(TEXT_2));
-    });
-    ui.add_space(S8);
+    tab_bar(ui, "apps_tabs", &["Installed apps", "File leftovers"], &mut app.apps_tab, accent);
 
-    let needle = app.app_filter.trim().to_lowercase();
-    let mut pick = None;
-    card(ui, |ui| {
-        egui::ScrollArea::vertical().max_height(290.0).id_salt("apps_list").show(ui, |ui| {
+    if app.apps_tab == 0 {
+        ui.horizontal(|ui| {
+            text_field(ui, &mut app.app_filter, "Search by app name", true, false);
+            ui.label(
+                RichText::new(format!("{} apps", app.apps.len()))
+                    .color(TEXT_SECONDARY)
+                    .size(SMALL),
+            );
+        });
+        ui.add_space(S8);
+        let needle = app.app_filter.trim().to_lowercase();
+        let mut pick = None;
+        let list_h = ui.available_height() - S16;
+        scroll_list(ui, "apps_list", list_h, |ui| {
             let mut shown = 0;
             for (index, item) in app.apps.iter().enumerate() {
                 if !needle.is_empty()
@@ -1331,11 +1958,16 @@ fn apps_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
                 let selected = app.selected_app == Some(index);
                 let r = row(ui, selected, true, |ui| {
                     ui.horizontal(|ui| {
-                        avatar(ui, &item.name, TEXT_2);
+                        avatar(ui, &item.name, accent);
                         ui.vertical(|ui| {
                             ui.spacing_mut().item_spacing.y = S4;
                             ui.label(RichText::new(&item.name).strong());
-                            ui.label(RichText::new(&item.bundle_id).size(CAPTION).line_height(Some(lh(CAPTION))).color(TEXT_2));
+                            ui.label(
+                                RichText::new(&item.bundle_id)
+                                    .size(CAPTION)
+                                    .line_height(Some(lh(CAPTION)))
+                                    .color(TEXT_SECONDARY),
+                            );
                         });
                     });
                 });
@@ -1344,71 +1976,132 @@ fn apps_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
                 }
             }
             if shown == 0 {
-                ui.label(RichText::new("No app matches your search.").color(TEXT_2));
+                ui.label(RichText::new("No app matches your search.").color(TEXT_SECONDARY));
             }
         });
-    });
-    if let Some(index) = pick {
-        app.selected_app = Some(index);
-        app.leftovers.clear();
-        app.leftovers_done = false;
-        app.survey_selected();
-    }
-
-    ui.add_space(S12);
-    match app.selected_app.and_then(|i| app.apps.get(i)) {
-        None => empty(ui, "Pick an app above", "Its leftover files will appear here. Nothing is deleted from this screen."),
-        Some(selected) => {
-            let name = selected.name.clone();
-            let app_path = selected.path.clone();
-            section(ui, &format!("FILES {} KEEPS IN YOUR LIBRARY", name.to_uppercase()));
-            if !app.leftovers_done {
-                loading_card(ui, true, "Searching your Library...", "");
-            } else if app.leftovers.is_empty() {
-                empty(ui, "No leftover files found", "This app does not keep anything in the usual Library folders.");
-            } else {
-                let mut reveal_path = None;
-                card(ui, |ui| {
-                    for hit in &app.leftovers {
-                        ui.horizontal(|ui| {
-                            ui.vertical(|ui| {
-                                ui.spacing_mut().item_spacing.y = S4;
-                                ui.label(RichText::new(file_name(&hit.path)).strong());
-                                ui.label(
-                                    RichText::new(format!("{}  ·  {}", hit.root, shorten(&pretty(&app.home, &hit.path), 70)))
-                                        .size(CAPTION).line_height(Some(lh(CAPTION)))
-                                        .color(TEXT_2),
-                                );
+        if let Some(index) = pick {
+            app.selected_app = Some(index);
+            app.apps_tab = 1;
+            app.leftovers.clear();
+            app.leftovers_done = false;
+            app.survey_selected();
+        }
+    } else {
+        match app.selected_app.and_then(|i| app.apps.get(i)) {
+            None => empty(ui, "Pick an app", "Select an app on the Installed apps tab to survey leftovers."),
+            Some(selected) => {
+                let name = selected.name.clone();
+                let app_path = selected.path.clone();
+                ui.label(RichText::new(format!("Leftovers: {name}")).strong().size(TITLE));
+                ui.add_space(S8);
+                if !app.leftovers_done {
+                    loading_card(ui, true, "Searching your Library...", "");
+                } else if app.leftovers.is_empty() {
+                    empty(ui, "No leftover files found", "This app does not keep anything in the usual Library folders.");
+                } else {
+                    let mut reveal_path = None;
+                    scroll_list(ui, "leftovers", ui.available_height() - S32, |ui| {
+                        for hit in &app.leftovers {
+                            let mut show = false;
+                            ui.horizontal(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.label(RichText::new(file_name(&hit.path)).strong());
+                                    ui.label(
+                                        RichText::new(shorten(&pretty(&app.home, &hit.path), 70))
+                                            .size(CAPTION)
+                                            .color(TEXT_SECONDARY),
+                                    );
+                                });
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    if ghost_accent(ui, "Show", true, accent).clicked() {
+                                        show = true;
+                                    }
+                                });
                             });
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ghost(ui, "Show", true).clicked() {
-                                    reveal_path = Some(hit.path.clone());
-                                }
-                            });
-                        });
+                            if show {
+                                reveal_path = Some(hit.path.clone());
+                            }
+                        }
+                    });
+                    if let Some(path) = reveal_path {
+                        reveal(&path);
                     }
-                });
-                if let Some(path) = reveal_path {
-                    reveal(&path);
                 }
-            }
-            ui.add_space(S8);
-            if ghost(ui, "Show the app in Finder", true).clicked() {
-                reveal(&app_path);
+                if ghost_accent(ui, "Show app in Finder", true, accent).clicked() {
+                    reveal(&app_path);
+                }
             }
         }
     }
 }
 
 fn performance_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
-    page_header(
+    let accent = accent_for_screen(Screen::Performance);
+    let busy = app.busy;
+    banner(ui, app);
+    let scan = page_header_with_action(
         ui,
         app.layout,
         Screen::Performance,
-        "See which apps start automatically in the background, and run a few common macOS fixes.",
+        "Maintenance tools, login items, and background startup entries for your account.",
+        "Scan",
+        !busy && !app.loaded.contains(&Screen::Performance),
     );
-    banner(ui, app);
-    let busy = app.busy;
+    if scan {
+        app.load(Screen::Performance);
+    }
+    if !app.loaded.contains(&Screen::Performance) {
+        empty(ui, "Press Scan", "Sable will list maintenance actions and startup items.");
+        return;
+    }
+
+    tab_bar(
+        ui,
+        "perf_tabs",
+        &["Maintenance", "Login items", "Background"],
+        &mut app.perf_tab,
+        accent,
+    );
+
+    if app.perf_tab != 0 {
+        ui.label(
+            RichText::new(format!("{} startup items", app.agents.len()))
+                .color(TEXT_SECONDARY)
+                .size(SMALL),
+        );
+        ui.add_space(S8);
+        if app.agents.is_empty() {
+            loading_card(ui, busy, "Reading startup items...", "No startup items found for your account.");
+        } else {
+            scroll_list(ui, "agents", ui.available_height() - S8, |ui| {
+                for agent in &app.agents {
+                    row(ui, false, false, |ui| {
+                        ui.horizontal(|ui| {
+                            avatar(ui, &agent.label, accent);
+                            ui.vertical(|ui| {
+                                ui.label(RichText::new(shorten(&agent.label, 60)).strong());
+                                ui.label(
+                                    RichText::new(if agent.path.starts_with(&app.home) {
+                                        "Your account"
+                                    } else {
+                                        "All users"
+                                    })
+                                    .size(CAPTION)
+                                    .color(TEXT_SECONDARY),
+                                );
+                            });
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ghost_accent(ui, "Show", true, accent).clicked() {
+                                    reveal(&agent.path);
+                                }
+                            });
+                        });
+                    });
+                }
+            });
+        }
+        return;
+    }
 
     section(ui, "FIXES AND MAINTENANCE");
     let mut tool = None;
@@ -1536,54 +2229,17 @@ fn performance_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
         app.confirm = request;
     }
 
-    ui.add_space(S16);
-    section(ui, "APPS THAT START AUTOMATICALLY");
-    ui.label(
-        RichText::new("These background items launch when you log in. Sable lists them but never turns them off.")
-            .color(TEXT_2)
-            .size(SMALL).line_height(Some(lh(SMALL))),
-    );
-    ui.add_space(S8);
-    if app.agents.is_empty() {
-        loading_card(ui, busy, "Reading startup items...", "No startup items found for your account.");
-    } else {
-        card(ui, |ui| {
-            for agent in &app.agents {
-                let yours = agent.path.starts_with(&app.home);
-                let r = row(ui, false, false, |ui| {
-                    ui.horizontal(|ui| {
-                        avatar(ui, &agent.label, if yours { ACCENT_TEXT } else { INFO });
-                        ui.vertical(|ui| {
-                            ui.spacing_mut().item_spacing.y = S4;
-                            ui.label(RichText::new(shorten(&agent.label, 60)).strong());
-                            ui.label(
-                                RichText::new(if yours { "Starts for your account only" } else { "Starts for every user on this Mac" })
-                                    .size(CAPTION).line_height(Some(lh(CAPTION)))
-                                    .color(TEXT_2),
-                            );
-                        });
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ghost(ui, "Show", true).clicked() {
-                                reveal(&agent.path);
-                            }
-                        });
-                    });
-                });
-                let _ = r;
-            }
-        });
-    }
 }
 
 fn protection_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
+    let accent = accent_for_screen(Screen::Protection);
+    banner(ui, app);
     page_header(
         ui,
         app.layout,
         Screen::Protection,
-        "Looks through a folder and lists files of the types you choose, like old installers or archives. It does not check for viruses and never changes your files.",
+        "Lists files of the types you choose in a folder. It does not check for viruses and never changes your files.",
     );
-    safety(ui, Safety::ReadOnly);
-    banner(ui, app);
 
     let busy = app.busy;
     if app.access != AccessStatus::Granted {
@@ -1605,9 +2261,10 @@ fn protection_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
         step_label(ui, "1", "Where should it look?");
         let home = app.home.clone();
         ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = v2(S8, S8);
             for (name, sub) in [("Downloads", "Downloads"), ("Documents", "Documents"), ("Desktop", "Desktop"), ("Home folder", "")] {
                 let target = if sub.is_empty() { home.clone() } else { home.join(sub) }.display().to_string();
-                if chip(ui, name, app.root == target).clicked() && !busy {
+                if chip_accent(ui, name, app.root == target, accent).clicked() && !busy {
                     app.root = target;
                 }
             }
@@ -1617,6 +2274,7 @@ fn protection_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
         ui.add_space(S8);
         step_label(ui, "2", "Which kinds of files?");
         ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = v2(S8, S8);
             for (name, exts) in [
                 ("Installers", "dmg,pkg"),
                 ("Archives", "zip,rar,7z,tar,gz"),
@@ -1624,13 +2282,13 @@ fn protection_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
                 ("Videos", "mov,mp4,mkv,avi"),
                 ("Documents", "pdf,doc,docx,pages"),
             ] {
-                if chip(ui, name, app.watch == exts).clicked() && !busy {
+                if chip_accent(ui, name, app.watch == exts, accent).clicked() && !busy {
                     app.watch = exts.into();
                 }
             }
         });
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Extensions:").color(TEXT_2).size(SMALL).line_height(Some(lh(SMALL))));
+            ui.label(RichText::new("Extensions:").color(WHITE).size(SMALL).line_height(Some(lh(SMALL))));
             ui.add(
                 egui::TextEdit::singleline(&mut app.watch)
                     .desired_width(300.0)
@@ -1643,25 +2301,27 @@ fn protection_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
 
         ui.add_space(S8);
         ui.horizontal(|ui| {
-            if primary(ui, "Start searching", !busy).clicked() {
+            if primary_accent(ui, "Start searching", !busy, accent).clicked() {
                 app.start_scan();
             }
-            let paused = app.control.as_ref().is_some_and(|c| c.is_paused());
-            if ghost(ui, if paused { "Resume" } else { "Pause" }, busy).clicked() {
-                if let Some(control) = &app.control {
-                    if paused {
-                        control.resume();
-                        app.status = "scanning";
-                    } else {
-                        control.pause();
-                        app.status = "paused";
+            if busy {
+                let paused = app.control.as_ref().is_some_and(|c| c.is_paused());
+                if ghost_accent(ui, if paused { "Resume" } else { "Pause" }, true, accent).clicked() {
+                    if let Some(control) = &app.control {
+                        if paused {
+                            control.resume();
+                            app.status = "scanning";
+                        } else {
+                            control.pause();
+                            app.status = "paused";
+                        }
                     }
                 }
-            }
-            if ghost(ui, "Stop", busy).clicked() {
-                if let Some(control) = &app.control {
-                    control.cancel();
-                    app.status = "canceling";
+                if ghost_accent(ui, "Stop", true, accent).clicked() {
+                    if let Some(control) = &app.control {
+                        control.cancel();
+                        app.status = "canceling";
+                    }
                 }
             }
         });
@@ -1688,27 +2348,38 @@ fn protection_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
         });
         ui.add_space(S8);
     } else if app.scan_ran {
-        match app.layout.grid_cols(3) {
-            1 => {
-                stat(ui, "Files checked", app.scanned, TEXT);
-                stat(ui, "Matches", app.detection_count, ACCENT);
-                stat(ui, "Could not read", app.errors, if app.errors > 0 { WARN } else { TEXT });
-            }
-            2 => {
-                ui.columns(2, |cols| {
-                    stat(&mut cols[0], "Files checked", app.scanned, TEXT);
-                    stat(&mut cols[1], "Matches", app.detection_count, ACCENT);
-                });
-                stat(ui, "Could not read", app.errors, if app.errors > 0 { WARN } else { TEXT });
-            }
-            _ => {
-                ui.columns(3, |cols| {
-                    stat(&mut cols[0], "Files checked", app.scanned, TEXT);
-                    stat(&mut cols[1], "Matches", app.detection_count, ACCENT);
-                    stat(&mut cols[2], "Could not read", app.errors, if app.errors > 0 { WARN } else { TEXT });
-                });
-            }
-        }
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                cmp_label_small(ui, "MATCHES");
+                ui.label(
+                    RichText::new(format_count(app.detection_count))
+                        .size(STAT)
+                        .strong()
+                        .color(accent)
+                        .monospace(),
+                );
+            });
+            ui.add_space(S24);
+            ui.vertical(|ui| {
+                cmp_label_small(ui, "FILES CHECKED");
+                ui.label(
+                    RichText::new(format_count(app.scanned))
+                        .size(H2)
+                        .color(WHITE)
+                        .monospace(),
+                );
+            });
+            ui.add_space(S24);
+            ui.vertical(|ui| {
+                cmp_label_small(ui, "COULD NOT READ");
+                ui.label(
+                    RichText::new(format_count(app.errors))
+                        .size(H2)
+                        .color(if app.errors > 0 { WARN } else { WHITE })
+                        .monospace(),
+                );
+            });
+        });
         ui.add_space(S8);
     }
 
@@ -1753,23 +2424,30 @@ fn protection_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
 }
 
 fn malware_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
-    page_header(
+    let accent = accent_for_screen(Screen::Malware);
+    banner(ui, app);
+    if page_header_with_action(
         ui,
         app.layout,
         Screen::Malware,
-        "Checks a folder against a public list of malware file hashes from abuse.ch MalwareBazaar. A match is moved to the Trash only after you confirm.",
-    );
-    safety(ui, Safety::Trash);
-    banner(ui, app);
+        "Compares files in a folder to the public MalwareBazaar hash list. Matches move to Trash only after you confirm.",
+        "Scan",
+        !app.busy,
+    ) {
+        app.start_threat();
+    }
 
     card(ui, |ui| {
-        ui.label(RichText::new("What this scan does not do").strong());
-        ui.label(
-            RichText::new("It does not use CleanMyMac's signature database. It does not read browser cookies, history, passwords, or messages. It does not change camera, microphone, or other app permissions. It does not watch the network in the background.")
-                .color(TEXT_2)
-                .size(SMALL).line_height(Some(lh(SMALL))),
-        );
-        if ghost(ui, "Open Privacy settings", true).clicked() {
+        ui.label(RichText::new("What this scan does not do").strong().color(WHITE));
+        for line in [
+            "Does not read browser cookies, history, passwords, or messages.",
+            "Does not change camera, microphone, or other app permissions.",
+            "Does not watch the network in the background.",
+        ] {
+            ui.label(RichText::new(format!("• {line}")).color(TEXT_SECONDARY).size(SMALL));
+        }
+        ui.add_space(S8);
+        if ghost_accent(ui, "Open Privacy settings", true, accent).clicked() {
             open_url("x-apple.systempreferences:com.apple.preference.security?Privacy");
         }
     });
@@ -1777,9 +2455,10 @@ fn malware_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
 
     let busy = app.busy;
     card(ui, |ui| {
-        step_label(ui, "1", "Where should it look?");
+        ui.label(RichText::new("Folder to scan").strong().color(WHITE));
         let home = app.home.clone();
         ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = v2(S8, S8);
             for (name, sub) in [
                 ("Downloads", "Downloads"),
                 ("Desktop", "Desktop"),
@@ -1787,7 +2466,7 @@ fn malware_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
                 ("Launch Agents", "Library/LaunchAgents"),
             ] {
                 let target = home.join(sub).display().to_string();
-                if chip(ui, name, app.threat_root == target).clicked() && !busy {
+                if chip_accent(ui, name, app.threat_root == target, accent).clicked() && !busy {
                     app.threat_root = target;
                 }
             }
@@ -1795,14 +2474,11 @@ fn malware_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
         field(ui, &mut app.threat_root, !busy);
         ui.add_space(S8);
         ui.label(
-            RichText::new("The first scan downloads the public hash list if the saved copy is missing or older than a day. Later scans reuse that copy.")
-                .color(TEXT_2)
-                .size(SMALL).line_height(Some(lh(SMALL))),
+            RichText::new("The first scan downloads the public hash list if needed. Later scans reuse the saved copy.")
+                .color(TEXT_SECONDARY)
+                .size(SMALL)
+                .line_height(Some(lh(SMALL))),
         );
-        ui.add_space(S8);
-        if primary(ui, "Scan", !busy).clicked() {
-            app.start_threat();
-        }
     });
     ui.add_space(S12);
 
@@ -1821,26 +2497,67 @@ fn malware_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
         return;
     };
 
-    stat(ui, "Files hashed", report.scanned, TEXT);
-    ui.add_space(S8);
-    card(ui, |ui| {
-        ui.label(RichText::new(&report.signatures_note).color(TEXT_2).size(SMALL).line_height(Some(lh(SMALL))));
-        if report.skipped_large > 0 || report.unreadable > 0 {
+    ui.horizontal(|ui| {
+        ui.vertical(|ui| {
+            cmp_label_small(ui, "FILES HASHED");
             ui.label(
-                RichText::new(format!(
-                    "{} files were larger than 50 MB and were skipped. {} items could not be read.",
-                    format_count(report.skipped_large),
-                    format_count(report.unreadable)
-                ))
-                .color(TEXT_2)
-                .size(SMALL).line_height(Some(lh(SMALL))),
+                RichText::new(format_count(report.scanned))
+                    .size(H2)
+                    .color(WHITE)
+                    .monospace(),
             );
-        }
+        });
+        ui.add_space(S24);
+        ui.vertical(|ui| {
+            cmp_label_small(ui, "SIGNATURES");
+            ui.label(
+                RichText::new(&report.signatures_note)
+                    .color(TEXT_SECONDARY)
+                    .size(SMALL),
+            );
+        });
     });
     ui.add_space(S8);
+    if report.skipped_large > 0 {
+        theme::notice_frame(WARN).show(ui, |ui| {
+            ui.label(
+                RichText::new(format!(
+                    "{} files larger than 50 MB were skipped.",
+                    format_count(report.skipped_large)
+                ))
+                .color(WARN)
+                .strong(),
+            );
+            if ghost_accent(ui, "Why skipped?", true, accent).clicked() {
+                app.malware_show_skipped = !app.malware_show_skipped;
+            }
+        });
+        ui.add_space(S8);
+    }
+    if report.unreadable > 0 {
+        ui.label(
+            RichText::new(format!("{} items could not be read.", format_count(report.unreadable)))
+                .color(TEXT_SECONDARY)
+                .size(SMALL),
+        );
+    }
 
     if report.hits.is_empty() {
-        empty(ui, "No known malware hashes", "Nothing in that folder matched the public list.");
+        card(ui, |ui| {
+            ui.horizontal(|ui| {
+                let (icon_rect, _) = ui.allocate_exact_size(Vec2::splat(S24), Sense::hover());
+                paint_ui_icon(ui.painter(), UiIcon::Check, icon_rect, SUCCESS);
+                ui.add_space(S8);
+                ui.vertical(|ui| {
+                    ui.label(RichText::new("No known malware hashes").strong().color(SUCCESS));
+                    ui.label(
+                        RichText::new("Nothing in that folder matched the public list. This is not a guarantee your Mac is clean.")
+                            .color(TEXT_SECONDARY)
+                            .size(SMALL),
+                    );
+                });
+            });
+        });
         return;
     }
 
@@ -1893,56 +2610,55 @@ fn malware_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
 }
 
 fn clutter_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
-    page_header(
+    let accent = accent_for_screen(Screen::Clutter);
+    let busy = app.busy;
+    banner(ui, app);
+    let rescan = page_header_with_action(
         ui,
         app.layout,
         Screen::Clutter,
-        "Large files (50 MB or more) sitting in your Downloads folder. Old installers and videos pile up here. Review them one at a time.",
+        "Large files (50 MB or more) in your Downloads folder.",
+        "Scan",
+        !busy && (!app.loaded.contains(&Screen::Clutter) || app.clutter.is_empty()),
     );
-    safety(ui, Safety::Trash);
-    banner(ui, app);
+    if rescan {
+        app.loaded.insert(Screen::Clutter);
+        app.clutter.clear();
+        app.start_clutter();
+    }
+    if !app.loaded.contains(&Screen::Clutter) {
+        empty(ui, "Press Scan", "Sable will list large downloads.");
+        return;
+    }
 
-    let busy = app.busy;
     if app.clutter.is_empty() {
         if busy {
             loading_card(ui, true, "Looking through Downloads...", "");
         } else {
-            empty(ui, "Your Downloads folder is tidy", "No file there is 50 MB or larger.");
-            if ghost(ui, "Look again", true).clicked() {
-                app.loaded.remove(&Screen::Clutter);
-            }
+            empty(ui, "Downloads is tidy", "No file there is 50 MB or larger.");
         }
         return;
     }
 
     let total: u64 = app.clutter.iter().map(|f| f.bytes).sum();
-    hero(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                label_small(ui, "LARGE FILES FOUND");
-                ui.label(RichText::new(format_bytes(total)).size(HERO).strong().color(TEXT));
-                ui.label(RichText::new(format!("across {} files", app.clutter.len())).color(TEXT_2));
-            });
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ghost(ui, "Look again", !busy).clicked() {
-                    app.loaded.remove(&Screen::Clutter);
-                }
-            });
-        });
-    });
-    ui.add_space(S16);
+    ui.label(
+        RichText::new(format!("{} across {} files", format_bytes(total), app.clutter.len()))
+            .color(WHITE)
+            .strong()
+            .monospace(),
+    );
+    ui.add_space(S12);
 
     let mut request = None;
     let mut reveal_path = None;
-    let biggest = app.clutter.iter().map(|f| f.bytes).max().unwrap_or(1).max(1);
-    card(ui, |ui| {
+    scroll_list(ui, "clutter_list", ui.available_height() - S8, |ui| {
         for (index, file) in app.clutter.iter().enumerate() {
             ui.push_id(index, |ui| {
+                let mut show = false;
+                let mut trash = false;
                 row(ui, false, false, |ui| {
                     ui.horizontal(|ui| {
-                        let bar_w = (ui.available_width() * 0.55).clamp(160.0, 420.0);
                         ui.vertical(|ui| {
-                            ui.set_max_width(bar_w);
                             ui.spacing_mut().item_spacing.y = S4;
                             ui.label(RichText::new(shorten(&file_name(&file.path), 55)).strong());
                             ui.label(
@@ -1950,34 +2666,36 @@ fn clutter_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
                                     &pretty(&app.home, file.path.parent().unwrap_or(Path::new(""))),
                                     70,
                                 ))
-                                .size(CAPTION).line_height(Some(lh(CAPTION)))
-                                .color(TEXT_2),
+                                .size(CAPTION)
+                                .color(TEXT_SECONDARY),
                             );
-                            meter_with_width(ui, file.bytes as f32 / biggest as f32, ACCENT, bar_w);
                         });
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.label(RichText::new(format_bytes(file.bytes)).strong().color(TEXT));
-                            ui.add_space(S8);
-                            if ghost(ui, "Show", true).clicked() {
-                                reveal_path = Some(file.path.clone());
-                            }
-                            if ghost(ui, "Move to Trash", !busy).clicked() {
-                                request = Some(Confirm {
-                                    heading: format!(
-                                        "Move \"{}\" to the Trash?",
-                                        shorten(&file_name(&file.path), 40)
-                                    ),
-                                    body: format!(
-                                        "This frees {}. You can put it back from the Trash if you change your mind.",
-                                        format_bytes(file.bytes)
-                                    ),
-                                    action: "Move to Trash",
-                                    kind: ConfirmKind::TrashDownload(file.path.clone()),
-                                });
-                            }
-                        });
+                        list_actions(
+                            ui,
+                            &format_bytes(file.bytes),
+                            true,
+                            !busy,
+                            accent,
+                            &format!("clutter_{index}"),
+                            &mut show,
+                            &mut trash,
+                        );
                     });
                 });
+                if show {
+                    reveal_path = Some(file.path.clone());
+                }
+                if trash {
+                    request = Some(Confirm {
+                        heading: format!("Move \"{}\" to the Trash?", file_name(&file.path)),
+                        body: format!(
+                            "This frees {}. You can restore it from the Trash.",
+                            format_bytes(file.bytes)
+                        ),
+                        action: "Move to Trash",
+                        kind: ConfirmKind::TrashDownload(file.path.clone()),
+                    });
+                }
             });
         }
     });
@@ -2046,8 +2764,13 @@ fn space_lens_permission_card(ui: &mut egui::Ui, app: &ScanApp) {
     ui.add_space(S8);
 }
 
-fn space_lens_hover_card(ctx: &egui::Context, home: &Path, hover: &SpaceNode) {
+fn space_lens_hover_card(ctx: &egui::Context, home: &Path, hover: &SpaceNode, parent_total: u64) {
     let pointer = ctx.input(|i| i.pointer.hover_pos()).unwrap_or_else(|| ctx.screen_rect().center());
+    let pct = if parent_total > 0 {
+        (hover.bytes as f64 / parent_total as f64) * 100.0
+    } else {
+        0.0
+    };
     egui::Area::new(egui::Id::new("space_lens_hover"))
         .order(egui::Order::Tooltip)
         .fixed_pos(pointer + v2(S16, S16))
@@ -2055,462 +2778,657 @@ fn space_lens_hover_card(ctx: &egui::Context, home: &Path, hover: &SpaceNode) {
             egui::Frame::popup(&ctx.style()).show(ui, |ui| {
                 ui.set_max_width(360.0);
                 ui.label(RichText::new(file_name(&hover.path)).strong());
-                ui.label(RichText::new(pretty(home, &hover.path)).size(CAPTION).line_height(Some(lh(CAPTION))).color(TEXT_2).monospace());
+                ui.label(
+                    RichText::new(pretty(home, &hover.path))
+                        .size(CAPTION)
+                        .color(TEXT_SECONDARY)
+                        .monospace(),
+                );
                 ui.separator();
-                ui.label(RichText::new(format!("Type: {}", space_item_kind(hover))).size(SMALL).line_height(Some(lh(SMALL))));
-                ui.label(RichText::new(format!("Size: {}", format_bytes(hover.bytes))).size(SMALL).line_height(Some(lh(SMALL))));
-                ui.label(RichText::new(format_modified(hover.modified)).size(SMALL).line_height(Some(lh(SMALL))).color(TEXT_2));
-                ui.label(RichText::new(cloud_label(hover.cloud)).size(CAPTION).line_height(Some(lh(CAPTION))).color(TEXT_2));
-                if hover.is_directory {
-                    ui.label(RichText::new("Double-click to zoom into this folder").size(CAPTION).line_height(Some(lh(CAPTION))).color(ACCENT_TEXT));
-                }
+                ui.label(RichText::new(format!("Size: {} ({pct:.1}% of folder)", format_bytes(hover.bytes))).size(SMALL));
+                ui.label(RichText::new("Double-click to open · Right-click Show in Finder").size(CAPTION).color(ACCENT_TEXT));
             });
         });
 }
 
-fn space_lens_selection_registry(
-    ui: &mut egui::Ui,
-    app: &mut ScanApp,
-    index: &std::collections::HashMap<PathBuf, u64>,
-    busy: bool,
-) {
-    let removable: Vec<_> = app
-        .space_selected
-        .iter()
-        .filter(|path| !is_spared(path, &app.home))
-        .cloned()
-        .collect();
-    let selected_bytes: u64 = app
-        .space_selected
-        .iter()
-        .map(|path| index.get(path).copied().unwrap_or(0))
-        .sum();
-    ui.push_id("space_selection_registry", |ui| {
-    card(ui, |ui| {
-        label_small(ui, "SELECTION");
-        ui.label(RichText::new(format_bytes(selected_bytes)).size(STAT).strong().color(TEXT));
-        ui.label(
-            RichText::new(format!("{} item(s) marked", app.space_selected.len()))
-                .color(TEXT_2)
-                .size(SMALL).line_height(Some(lh(SMALL))),
-        );
-        ui.add_space(S8);
-        if app.space_selected.is_empty() {
-            ui.label(RichText::new("Check files in the list to add them here.").color(TEXT_2).size(SMALL).line_height(Some(lh(SMALL))));
-        } else {
-            let selected: Vec<_> = app.space_selected.iter().cloned().collect();
-            let mut remove = None;
-            egui::ScrollArea::vertical()
-                .id_salt("space_selection_scroll")
-                .max_height(220.0)
-                .show(ui, |ui| {
-                for path in &selected {
-                    let spared = is_spared(path, &app.home);
-                    ui.push_id(path.display().to_string(), |ui| {
-                    ui.horizontal(|ui| {
-                        ui.vertical(|ui| {
-                            ui.spacing_mut().item_spacing.y = S4;
-                            ui.label(RichText::new(shorten(&file_name(path), 28)).size(SMALL).line_height(Some(lh(SMALL))));
-                            ui.label(
-                                RichText::new(format!(
-                                    "{}{}",
-                                    format_bytes(index.get(path).copied().unwrap_or(0)),
-                                    if spared { " · protected" } else { "" }
-                                ))
-                                .size(CAPTION).line_height(Some(lh(CAPTION)))
-                                .color(if spared { WARN } else { TEXT_2 }),
-                            );
-                        });
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ghost(ui, "×", !busy).clicked() {
-                                remove = Some(path.clone());
-                            }
-                        });
-                    });
-                    });
-                }
-            });
-            if let Some(path) = remove {
-                app.space_selected.remove(&path);
+fn nav_chevron(ui: &mut egui::Ui, salt: &str, back: bool, enabled: bool, accent: Color32) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(S32), if enabled { Sense::click() } else { Sense::hover() });
+    let fill = if !enabled {
+        BTN_DISABLED
+    } else if response.is_pointer_button_down_on() {
+        with_alpha(accent, 120)
+    } else if response.hovered() {
+        with_alpha(WHITE, 24)
+    } else {
+        with_alpha(WHITE, 12)
+    };
+    ui.painter().rect_filled(rect, r_sm(), fill);
+    if enabled && response.has_focus() {
+        ui.painter().rect_stroke(rect.expand(S4), r_sm(), focus_stroke());
+    }
+    let c = rect.center();
+    let d = 5.0;
+    if back {
+        ui.painter().line_segment([c + v2(d, 0.0), c + v2(-d, -d)], Stroke::new(2.0, if enabled { WHITE } else { TEXT_SECONDARY }));
+        ui.painter().line_segment([c + v2(-d, -d), c + v2(-d, d)], Stroke::new(2.0, if enabled { WHITE } else { TEXT_SECONDARY }));
+    } else {
+        ui.painter().line_segment([c + v2(-d, 0.0), c + v2(d, -d)], Stroke::new(2.0, if enabled { WHITE } else { TEXT_SECONDARY }));
+        ui.painter().line_segment([c + v2(d, -d), c + v2(d, d)], Stroke::new(2.0, if enabled { WHITE } else { TEXT_SECONDARY }));
+    }
+    let _ = salt;
+    response
+}
+
+fn space_breadcrumb(ui: &mut egui::Ui, app: &ScanApp, accent: Color32, busy: bool) -> (Option<PathBuf>, bool, bool) {
+    let mut jump = None;
+    let mut back = false;
+    let mut forward = false;
+    let data = computer_root();
+    let current = PathBuf::from(app.space_root.trim());
+    let mut crumbs: Vec<(String, PathBuf)> = vec![("Macintosh HD".into(), data.clone())];
+    if let Ok(rest) = current.strip_prefix(&data) {
+        let mut acc = data.clone();
+        for comp in rest.components() {
+            if let std::path::Component::Normal(name) = comp {
+                acc.push(name);
+                crumbs.push((name.to_string_lossy().into_owned(), acc.clone()));
             }
         }
-        ui.add_space(S8);
-        ui.label(
-            RichText::new("Protected system paths and folders are blocked. Sable moves files to the Trash (undoable), not permanent delete.")
-                .color(TEXT_2)
-                .size(CAPTION).line_height(Some(lh(CAPTION))),
-        );
-        ui.add_space(S8);
-        ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing.y = S8;
-            if primary(ui, "Remove", !busy && !removable.is_empty()).clicked() {
-                let paths: Vec<_> = removable;
-                app.confirm = Some(Confirm {
-                    heading: "Move selected files to the Trash?".into(),
-                    body: format!(
-                        "This frees about {}. System files stay protected. You can restore items from the Trash.",
-                        format_bytes(selected_bytes)
-                    ),
-                    action: "Move to Trash",
-                    kind: ConfirmKind::TrashSpace(paths),
-                });
+    } else if current != data {
+        crumbs.push((file_name(&current), current.clone()));
+    }
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = S4;
+        let can_back = !busy && !app.space_history.is_empty();
+        let can_fwd = !busy && !app.space_future.is_empty();
+        if nav_chevron(ui, "sp_back", true, can_back, accent).clicked() {
+            back = true;
+        }
+        if nav_chevron(ui, "sp_fwd", false, can_fwd, accent).clicked() {
+            forward = true;
+        }
+        for (i, (label, path)) in crumbs.iter().enumerate() {
+            if i > 0 {
+                ui.label(RichText::new("›").color(TEXT_SECONDARY));
             }
-            if ghost(ui, "Clear selection", !busy && !app.space_selected.is_empty()).clicked() {
-                app.space_selected.clear();
+            let active = i == crumbs.len() - 1;
+            let r = ui.add(
+                egui::Label::new(RichText::new(label).color(if active { WHITE } else { accent }).size(SMALL))
+                    .sense(if active || busy { Sense::hover() } else { Sense::click() }),
+            );
+            if r.clicked() && !active && !busy {
+                jump = Some(path.clone());
             }
+        }
+    });
+    (jump, back, forward)
+}
+
+fn space_node_unreadable(node: &SpaceNode) -> bool {
+    node.bytes == 0 && node.is_directory
+}
+
+fn space_reconcile_tiles(app: &ScanApp, kids: &[SpaceNode], other_bytes: u64, folder_total: u64) -> Vec<TreemapTile> {
+    let mut tiles: Vec<TreemapTile> = kids
+        .iter()
+        .map(|node| TreemapTile {
+            key: Some(node.path.clone()),
+            label: file_name(&node.path),
+            bytes: node.bytes,
+            category: category_for(&node.path, &app.home),
+            is_directory: node.is_directory,
+            unreadable: space_node_unreadable(node),
+        })
+        .collect();
+    if other_bytes > 0 {
+        tiles.push(TreemapTile {
+            key: None,
+            label: "Other".into(),
+            bytes: other_bytes,
+            category: SpaceCategory::Other,
+            is_directory: false,
+            unreadable: false,
         });
-    });
-    });
+    }
+    let at_volume = PathBuf::from(app.space_root.trim()) == computer_root();
+    if at_volume && app.volume_capacity_bytes > 0 {
+        let listed: u64 = folder_total;
+        let used = app.volume_used;
+        if used > listed {
+            tiles.push(TreemapTile {
+                key: None,
+                label: "System, snapshots and other".into(),
+                bytes: used - listed,
+                category: SpaceCategory::Unaccounted,
+                is_directory: false,
+                unreadable: false,
+            });
+        }
+        let free = app.volume_capacity_bytes.saturating_sub(used);
+        if free > 0 {
+            tiles.push(TreemapTile {
+                key: None,
+                label: "Free space".into(),
+                bytes: free,
+                category: SpaceCategory::Free,
+                is_directory: false,
+                unreadable: false,
+            });
+        }
+    }
+    tiles
 }
 
 fn space_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
-    page_header(
-        ui,
-        app.layout,
-        Screen::Space,
-        "Pick a drive or folder, press Scan, then explore the map. Double-click a bubble or folder to zoom in.",
-    );
-    banner(ui, app);
-
+    let accent = accent_for_screen(Screen::Space);
     let busy = app.busy;
-    let layout = app.layout;
-    let mut drill = false;
-    let mut reveal_path = None;
-    let mut open = None;
-    let mut up = false;
-    let mac = computer_root().display().to_string();
-
-    space_lens_permission_card(ui, app);
-
-    card(ui, |ui| {
-        step_label(ui, "1", "Select storage");
-        let home = app.home.clone();
-        ui.horizontal_wrapped(|ui| {
-            if chip(ui, "Macintosh HD", app.space_root == mac).clicked() && !busy {
-                app.space_root = mac.clone();
-            }
-            for (name, sub) in [
-                ("Home", ""),
-                ("Documents", "Documents"),
-                ("Downloads", "Downloads"),
-                ("Desktop", "Desktop"),
-            ] {
-                let target = if sub.is_empty() {
-                    home.clone()
-                } else {
-                    home.join(sub)
-                }
-                .display()
-                .to_string();
-                if chip(ui, name, app.space_root == target).clicked() && !busy {
-                    app.space_root = target;
-                }
-            }
-        });
-        ui.collapsing("Custom folder", |ui| {
-            field(ui, &mut app.space_root, !busy);
-        });
-        ui.add_space(S8);
-        step_label(ui, "2", "Scan");
-        ui.label(
-            RichText::new(format!("Target: {}", shorten(&pretty(&app.home, Path::new(app.space_root.trim())), 72)))
-                .size(SMALL).line_height(Some(lh(SMALL)))
-                .color(TEXT_2)
-                .monospace(),
-        );
-        ui.add_space(S8);
-        ui.horizontal_wrapped(|ui| {
-            if primary_icon(ui, icons::UiIcon::Scan, "Scan", !busy).clicked() {
-                app.start_space();
-            }
-            if app.space.is_some() && ghost(ui, "Scan again", !busy).clicked() {
-                app.start_space();
-            }
-        });
-        if busy {
-            ui.add_space(S8);
-            ui.horizontal(|ui| {
-                ui.spinner();
+    banner(ui, app);
+    components::surface_frame().show(ui, |ui| {
+        ui.set_min_width(ui.available_width());
+        ui.horizontal(|ui| {
+            let (icon_rect, _) = ui.allocate_exact_size(Vec2::splat(S32), Sense::hover());
+            paint_screen_icon(ui.painter(), Screen::Space, icon_rect, accent);
+            ui.add_space(S12);
+            ui.vertical(|ui| {
+                ui.label(RichText::new("Space Lens").font(heading_font(H2)).color(WHITE));
                 ui.label(
-                    RichText::new("Indexing folders and measuring sizes in the background…")
-                        .color(TEXT_2),
+                    RichText::new("Treemap and list of disk usage. Area equals size.")
+                        .color(TEXT_SECONDARY)
+                        .size(SMALL),
                 );
+                ui.add_space(S8);
+                ui.horizontal(|ui| {
+                    components::safety_badge(ui, SafetyKind::ReadOnly);
+                    ui.add_space(S8);
+                    components::safety_badge(ui, SafetyKind::Trash);
+                });
             });
-        }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if app.last_refresh.is_some() {
+                    ui.label(
+                        RichText::new(format!("Last scanned: {}", scan_age(app.last_refresh)))
+                            .color(TEXT_SECONDARY)
+                            .size(CAPTION),
+                    );
+                }
+                if primary_accent(ui, if busy { "Scanning…" } else { "Rescan" }, !busy, accent).clicked() {
+                    app.start_space();
+                }
+            });
+        });
     });
     ui.add_space(S8);
-
-    if busy && app.space.is_none() {
-        loading_card(ui, true, "Building your storage map…", "");
-    } else if let Some(report) = app.space.clone() {
-        ui.horizontal(|ui| {
-            if ghost(
-                ui,
-                "Up one level",
-                !busy && report.root != computer_root() && report.root.parent().is_some(),
-            )
-            .clicked()
-            {
-                up = true;
-            }
-            ui.label(
-                RichText::new(shorten(&pretty(&app.home, &report.root), 72))
-                    .monospace()
-                    .color(TEXT_2),
-            );
-        });
+    let (jump, back, fwd) = space_breadcrumb(ui, app, accent, busy);
+    if back {
+        app.space_back();
+    }
+    if fwd {
+        app.space_forward();
+    }
+    if let Some(path) = jump {
+        app.space_open(path);
+    }
+    ui.horizontal(|ui| {
         ui.label(
-            RichText::new(format!("{} in this folder", format_bytes(report.total)))
-                .size(H2)
-                .strong()
-                .color(TEXT),
+            RichText::new(format!(
+                "{} items",
+                app.space.as_ref().map(|r| r.children.len()).unwrap_or(0)
+            ))
+            .color(TEXT_SECONDARY)
+            .size(SMALL),
         );
-        ui.add_space(S8);
+    });
+    space_lens_permission_card(ui, app);
 
-        let total = report.total.max(1) as f32;
-        let mut kids: Vec<&SpaceNode> = report.children.iter().collect();
-        kids.sort_by(|a, b| b.bytes.cmp(&a.bytes));
-        let index: std::collections::HashMap<PathBuf, u64> =
-            kids.iter().map(|node| (node.path.clone(), node.bytes)).collect();
-        let bubble_nodes: Vec<_> = kids
-            .iter()
-            .copied()
-            .filter(|node| node.bytes as f32 / total >= SPACE_LENS_BUBBLE_THRESHOLD)
-            .collect();
-        let other_bytes: u64 = kids
-            .iter()
-            .filter(|node| node.bytes as f32 / total < SPACE_LENS_BUBBLE_THRESHOLD)
-            .map(|node| node.bytes)
-            .sum();
+    let mut open: Option<PathBuf> = None;
+    let mut reveal_path: Option<PathBuf> = None;
+    let footer_h = 72.0;
+    let body_h = (ui.available_height() - footer_h - S8).max(200.0);
 
-        if kids.is_empty() {
-            empty(ui, "Nothing to show", "This folder is empty or cannot be read.");
-        } else {
-            space_lens_results_grid(
-                ui,
-                app,
-                layout,
-                &kids,
-                &bubble_nodes,
-                other_bytes,
-                total,
-                &index,
-                busy,
-                &mut open,
-                &mut reveal_path,
-            );
-
-            if let Some(hover_path) = &app.space_hover {
-                if let Some(node) = kids.iter().find(|node| &node.path == hover_path) {
-                    space_lens_hover_card(ui.ctx(), &app.home, node);
-                }
+    let report = app.space.clone();
+    let Some(report) = report else {
+        ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), body_h), Layout::top_down(Align::Center), |ui| {
+            if busy {
+                loading_line(ui, "Building your storage map...");
+            } else {
+                ui.label(RichText::new("Press Rescan to map this disk.").color(TEXT_SECONDARY));
             }
-        }
-    } else if !busy {
-        empty(
-            ui,
-            "No map yet",
-            "Macintosh HD is selected by default. Press Scan to build your storage map.",
-        );
-        ui.add_space(S8);
-        if primary(ui, "Scan", true).clicked() {
-            app.start_space();
+        });
+        space_sticky_footer(ui, app, &[], 0, accent, busy);
+        return;
+    };
+
+    let folder_total = report.total;
+    let mut kids: Vec<SpaceNode> = report
+        .children
+        .iter()
+        .filter(|n| app.space_show_hidden || !is_hidden_name(&n.path))
+        .cloned()
+        .collect();
+    if app.space_sort_by_name {
+        kids.sort_by(|a, b| file_name(&a.path).cmp(&file_name(&b.path)));
+    } else {
+        kids.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+    }
+    let threshold = (folder_total as f32 * SPACE_LENS_BUBBLE_THRESHOLD).max(1.0) as u64;
+    let mut main_nodes = Vec::new();
+    let mut small_nodes = Vec::new();
+    for node in &kids {
+        if node.bytes >= threshold {
+            main_nodes.push(node.clone());
+        } else {
+            small_nodes.push(node.clone());
         }
     }
+    let other_bytes: u64 = small_nodes.iter().map(|n| n.bytes).sum();
+    let (readable, unreadable): (Vec<_>, Vec<_>) = kids.iter().partition(|n| !space_node_unreadable(n));
+    let tiles = space_reconcile_tiles(app, &main_nodes, other_bytes, folder_total);
+
+    let list_w = (ui.available_width() * 0.4).clamp(280.0, 480.0);
+    ui.horizontal_top(|ui| {
+        ui.spacing_mut().item_spacing.x = S16;
+        ui.allocate_ui_with_layout(Vec2::new(list_w, body_h), Layout::top_down(Align::Min), |ui| {
+            space_list_panel(ui, app, readable, unreadable, other_bytes, &small_nodes, folder_total, body_h, busy, accent, &mut open, &mut reveal_path);
+        });
+        ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), body_h), Layout::top_down(Align::Min), |ui| {
+            space_treemap_panel(ui, app, &tiles, folder_total, body_h, busy, accent, &mut open);
+        });
+    });
+
+    if let Some(hover_path) = app.space_hover.clone() {
+        if let Some(node) = kids.iter().find(|node| node.path == hover_path) {
+            space_lens_hover_card(ui.ctx(), &app.home, node, folder_total.max(1));
+        }
+    }
+
+    space_sticky_footer(ui, app, &kids, folder_total, accent, busy);
 
     if let Some(path) = reveal_path {
         reveal(&path);
     }
-    if up {
-        if let Some(parent) = app.space.as_ref().and_then(|r| r.root.parent()) {
-            app.space_root = parent.display().to_string();
-            drill = true;
-        }
-    }
     if let Some(path) = open {
-        app.space_root = path.display().to_string();
-        drill = true;
-    }
-    if drill && !busy {
-        app.start_space();
+        app.space_open(path);
     }
 }
 
-fn space_lens_results_grid(
+fn space_can_select(node: &SpaceNode, home: &Path) -> bool {
+    !space_node_unreadable(node)
+        && !is_protected(&node.path, home)
+        && (!node.is_directory || node.path.extension().is_some_and(|e| e == "app"))
+}
+
+fn space_list_panel(
     ui: &mut egui::Ui,
     app: &mut ScanApp,
-    layout: UiLayout,
-    kids: &[&SpaceNode],
-    bubble_nodes: &[&SpaceNode],
+    readable: Vec<&SpaceNode>,
+    unreadable: Vec<&SpaceNode>,
     other_bytes: u64,
-    total: f32,
-    index: &std::collections::HashMap<PathBuf, u64>,
+    small_nodes: &[SpaceNode],
+    folder_total: u64,
+    height: f32,
     busy: bool,
+    accent: Color32,
     open: &mut Option<PathBuf>,
     reveal_path: &mut Option<PathBuf>,
 ) {
-    ui.push_id("space_lens_grid", |ui| {
-        let side_registry = !layout.compact && ui.available_width() > 780.0;
-        let total_w = ui.available_width();
-        let registry_w = if side_registry { 248.0 } else { 0.0 };
-        let gap = S12;
-        let pair_w = (total_w - registry_w - if side_registry { gap } else { 0.0 }).max(360.0);
-        let list_w = (pair_w * 0.46).clamp(200.0, 420.0);
-        let lens_w = (pair_w - list_w - gap).max(200.0);
-        let pane_h = if layout.compact { 380.0 } else { 480.0 };
-
-        ui.horizontal_top(|ui| {
-            ui.spacing_mut().item_spacing.x = gap;
-            ui.allocate_ui_with_layout(Vec2::new(list_w, pane_h), Layout::top_down(Align::Min), |ui| {
-                ui.set_width(list_w);
-                space_lens_list_pane(ui, app, kids, total, busy, open, reveal_path);
-            });
-            ui.allocate_ui_with_layout(Vec2::new(lens_w, pane_h), Layout::top_down(Align::Min), |ui| {
-                ui.set_width(lens_w);
-                space_lens_bubble_pane(ui, app, bubble_nodes, other_bytes, total, layout.compact, busy, open);
-            });
-            if side_registry {
-                ui.allocate_ui_with_layout(Vec2::new(registry_w, pane_h), Layout::top_down(Align::Min), |ui| {
-                    ui.set_width(registry_w);
-                    space_lens_selection_registry(ui, app, index, busy);
+    ui.horizontal(|ui| {
+        ui.checkbox(&mut app.space_show_hidden, "Show hidden");
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            if ui.button(if app.space_sort_by_name { "Sort: Name ▼" } else { "Sort: Size ▼" }).clicked() {
+                app.space_sort_by_name = !app.space_sort_by_name;
+            }
+            egui::ComboBox::from_id_salt("space_select_menu")
+                .selected_text("Select…")
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(false, "None").clicked() {
+                        app.space_selected.clear();
+                    }
+                    if ui.selectable_label(false, "All removable").clicked() {
+                        app.space_selected.clear();
+                        for node in readable.iter().copied().chain(unreadable.iter().copied()) {
+                            if space_can_select(node, &app.home) {
+                                app.space_selected.insert(node.path.clone());
+                            }
+                        }
+                    }
+                    if ui.selectable_label(false, "Largest 10").clicked() {
+                        app.space_selected.clear();
+                        for node in readable.iter().take(10) {
+                            if space_can_select(node, &app.home) {
+                                app.space_selected.insert(node.path.clone());
+                            }
+                        }
+                    }
                 });
-            }
         });
-        if !side_registry {
-            ui.add_space(S8);
-            space_lens_selection_registry(ui, app, index, busy);
-        }
     });
-}
-
-fn space_lens_list_pane(
-    ui: &mut egui::Ui,
-    app: &mut ScanApp,
-    kids: &[&SpaceNode],
-    total: f32,
-    busy: bool,
-    open: &mut Option<PathBuf>,
-    reveal_path: &mut Option<PathBuf>,
-) {
-    ui.push_id("space_lens_list_pane", |ui| {
-    card(ui, |ui| {
-        label_small(ui, "LIST — LARGEST FIRST");
+    ui.add_space(S8);
+    components::surface_frame().show(ui, |ui| {
         egui::ScrollArea::vertical()
-            .id_salt("space_lens_list_scroll")
-            .max_height(420.0)
-            .show(ui, |ui| {
-            for node in kids {
-                let share = node.bytes as f32 / total;
-                let spared = is_spared(&node.path, &app.home);
-                let response = ui
-                    .push_id(node.path.display().to_string(), |ui| {
-                        row(ui, false, true, |ui| {
-                            ui.horizontal(|ui| {
-                                let mut on = app.space_selected.contains(&node.path);
-                                ui.add_enabled_ui(!spared && !node.is_directory, |ui| {
-                                    if ui.checkbox(&mut on, "").changed() {
-                                        if on {
-                                            app.space_selected.insert(node.path.clone());
-                                        } else {
-                                            app.space_selected.remove(&node.path);
-                                        }
-                                    }
-                                });
-                                if spared || node.is_directory {
-                                    ui.add_space(S24);
-                                }
-                                let text_w = (ui.available_width() * 0.72).clamp(120.0, 280.0);
-                                ui.vertical(|ui| {
-                                    ui.set_max_width(text_w);
-                                    ui.spacing_mut().item_spacing.y = S4;
-                                    ui.label(RichText::new(file_name(&node.path)).strong());
-                                    ui.label(
-                                        RichText::new(format!(
-                                            "{} · {}",
-                                            space_item_kind(node),
-                                            format_modified(node.modified)
-                                        ))
-                                        .size(CAPTION).line_height(Some(lh(CAPTION)))
-                                        .color(TEXT_2),
-                                    );
-                                    meter_with_width(
-                                        ui,
-                                        share,
-                                        if share > 0.4 { WARN } else { ACCENT },
-                                        text_w,
-                                    );
-                                });
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    ui.label(RichText::new(format_bytes(node.bytes)).strong().color(TEXT));
-                                });
-                            });
-                        })
-                    })
-                    .inner;
-                if response.hovered() {
-                    app.space_hover = Some(node.path.clone());
-                }
-                if response.double_clicked() && node.is_directory && !busy {
-                    *open = Some(node.path.clone());
-                }
-                if response.secondary_clicked() {
-                    *reveal_path = Some(node.path.clone());
-                }
-            }
-        });
-    });
-    });
-}
-
-fn space_lens_bubble_pane(
-    ui: &mut egui::Ui,
-    app: &mut ScanApp,
-    bubble_nodes: &[&SpaceNode],
-    other_bytes: u64,
-    total: f32,
-    compact: bool,
-    busy: bool,
-    open: &mut Option<PathBuf>,
-) {
-    ui.push_id("space_lens_bubble_pane", |ui| {
-    card(ui, |ui| {
-        label_small(ui, "LENS — PROPORTIONAL MAP");
-        ui.label(
-            RichText::new("Circle size = disk space. Items under 2% roll into “Other”.")
-                .color(TEXT_2)
-                .size(CAPTION).line_height(Some(lh(CAPTION))),
-        );
-        ui.add_space(S8);
-        egui::ScrollArea::both()
-            .id_salt("space_lens_bubble_scroll")
+            .id_salt("space_list")
             .auto_shrink([false; 2])
-            .max_height(420.0)
+            .max_height(height - 48.0)
             .show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                for node in bubble_nodes {
-                    let share = node.bytes as f32 / total;
-                    let selected = app.space_selected.contains(&node.path);
-                    let name = file_name(&node.path);
-                    let response = ui
-                        .push_id(node.path.display().to_string(), |ui| {
-                            bubble(ui, &name, share, selected, compact)
-                        })
-                        .inner;
-                    if response.hovered() {
-                        app.space_hover = Some(node.path.clone());
-                    }
-                    if response.double_clicked() && node.is_directory && !busy {
-                        *open = Some(node.path.clone());
-                    }
+                for node in readable {
+                    space_list_row(ui, app, node, folder_total, busy, accent, open, reveal_path);
                 }
                 if other_bytes > 0 {
-                    let share = other_bytes as f32 / total;
-                    ui.push_id("other_bucket", |ui| bubble(ui, "Other", share, false, compact));
+                    ui.add_space(S8);
+                    let header = ui.horizontal(|ui| {
+                        ui.label(RichText::new("Other (small items)").strong());
+                        ui.label(RichText::new(format_bytes(other_bytes)).monospace().color(TEXT_SECONDARY));
+                        if ui.small_button(if app.space_other_expanded { "▾" } else { "▸" }).clicked() {
+                            app.space_other_expanded = !app.space_other_expanded;
+                        }
+                    });
+                    let _ = header;
+                    if app.space_other_expanded {
+                        for node in small_nodes {
+                            space_list_row(ui, app, node, folder_total, busy, accent, open, reveal_path);
+                        }
+                    }
                 }
+                if !unreadable.is_empty() {
+                    ui.add_space(S8);
+                    ui.label(RichText::new("Empty or unreadable").size(CAPTION).color(TEXT_SECONDARY).strong());
+                    for node in unreadable {
+                        ui.horizontal(|ui| {
+                            paint_ui_icon(ui.painter(), UiIcon::Lock, Rect::from_min_size(ui.cursor().min, Vec2::splat(16.0)), WARN);
+                            ui.label(RichText::new(file_name(&node.path)).color(TEXT_SECONDARY).size(SMALL));
+                            ui.label(RichText::new("No access").color(WARN).size(CAPTION));
+                        });
+                    }
+                }
+            });
+    });
+}
+
+fn space_list_row(
+    ui: &mut egui::Ui,
+    app: &mut ScanApp,
+    node: &SpaceNode,
+    folder_total: u64,
+    busy: bool,
+    accent: Color32,
+    open: &mut Option<PathBuf>,
+    reveal_path: &mut Option<PathBuf>,
+) {
+    let protected = is_protected(&node.path, &app.home);
+    let can_check = space_can_select(node, &app.home);
+    let selected = app.space_selected.contains(&node.path);
+    let hovered = app.space_hover.as_ref() == Some(&node.path);
+    let share = if folder_total > 0 {
+        node.bytes as f32 / folder_total as f32
+    } else {
+        0.0
+    };
+    let response = row(ui, selected || hovered, true, |ui| {
+        ui.horizontal(|ui| {
+            if can_check {
+                let check = Rect::from_min_size(ui.cursor().min, Vec2::splat(S24));
+                let on = app.space_selected.contains(&node.path);
+                if task_check(ui, check, &node.path.display().to_string(), on, !busy).clicked() {
+                    if on {
+                        app.space_selected.remove(&node.path);
+                    } else {
+                        app.space_selected.insert(node.path.clone());
+                    }
+                }
+            } else if protected {
+                let (lock, _) = ui.allocate_exact_size(Vec2::splat(S24), Sense::hover());
+                paint_ui_icon(ui.painter(), UiIcon::Lock, lock.shrink(4.0), TEXT_SECONDARY);
+            } else {
+                ui.add_space(S24);
+            }
+            let (icon_rect, _) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover());
+            if node.path.extension().is_some_and(|e| e == "app") {
+                paint_screen_icon(ui.painter(), Screen::Apps, icon_rect, accent);
+            } else if node.is_directory {
+                paint_ui_icon(ui.painter(), UiIcon::Folder, icon_rect, WHITE);
+            } else {
+                paint_ui_icon(ui.painter(), UiIcon::Info, icon_rect, WHITE);
+            }
+            let name = file_name(&node.path);
+            let name_resp = ui.add(egui::Label::new(RichText::new(shorten(&name, 28)).size(SMALL)).sense(Sense::hover()));
+            name_resp.on_hover_text(&name);
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.label(RichText::new(format_bytes(node.bytes)).monospace().size(SMALL));
+                let bar_w = 72.0;
+                let (bar, _) = ui.allocate_exact_size(Vec2::new(bar_w, S4), Sense::hover());
+                let mut fill = bar;
+                fill.set_width((bar_w * share).max(2.0));
+                ui.painter().rect_filled(bar, r_xs(), with_alpha(WHITE, 30));
+                ui.painter().rect_filled(fill, r_xs(), accent);
             });
         });
     });
+    if response.hovered() {
+        app.space_hover = Some(node.path.clone());
+    }
+    if response.double_clicked() && node.is_directory && !busy {
+        *open = Some(node.path.clone());
+    }
+    if response.secondary_clicked() {
+        *reveal_path = Some(node.path.clone());
+    }
+}
+
+fn space_treemap_panel(
+    ui: &mut egui::Ui,
+    app: &mut ScanApp,
+    tiles: &[TreemapTile],
+    folder_total: u64,
+    height: f32,
+    busy: bool,
+    accent: Color32,
+    open: &mut Option<PathBuf>,
+) {
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = S8;
+        for cat in [
+            SpaceCategory::User,
+            SpaceCategory::Apps,
+            SpaceCategory::System,
+            SpaceCategory::Caches,
+            SpaceCategory::Other,
+            SpaceCategory::Free,
+            SpaceCategory::Unaccounted,
+        ] {
+            ui.label(RichText::new("■").color(cat.color()));
+            ui.label(RichText::new(cat.label()).size(CAPTION).color(TEXT_SECONDARY));
+        }
     });
+    ui.add_space(S4);
+    let bytes: Vec<u64> = tiles.iter().map(|t| t.bytes).collect();
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height - 28.0), Sense::click());
+    let rects = layout_treemap(&bytes, rect.shrink(S4));
+    let clip = ui.painter().with_clip_rect(rect);
+    for (tile, tile_rect) in tiles.iter().zip(rects.iter()) {
+        if tile_rect.width() < 1.0 {
+            continue;
+        }
+        let selected = tile.key.as_ref().is_some_and(|p| app.space_selected.contains(p));
+        let hovered = tile.key.as_ref().is_some_and(|p| app.space_hover.as_ref() == Some(p));
+        let fill = with_alpha(tile.category.color(), if selected { 220 } else if hovered { 180 } else { 140 });
+        clip.rect_filled(*tile_rect, r_xs(), fill);
+        if selected || hovered {
+            clip.rect_stroke(*tile_rect, r_xs(), Stroke::new(2.0, WHITE));
+        }
+        let label = fit_label(ui.painter(), &tile.label, tile_rect.width() - S8, font_semi(CAPTION));
+        if !label.is_empty() && tile_rect.height() > 20.0 {
+            clip.text(tile_rect.center(), Align2::CENTER_CENTER, label, font_semi(CAPTION), WHITE);
+        }
+    }
+    if let Some(pos) = response.hover_pos() {
+        for (tile, tile_rect) in tiles.iter().zip(rects.iter()) {
+            if tile_rect.contains(pos) {
+                if let Some(path) = &tile.key {
+                    app.space_hover = Some(path.clone());
+                }
+                break;
+            }
+        }
+    }
+    if response.clicked() && !busy {
+        if let Some(pos) = response.interact_pointer_pos() {
+            for (tile, tile_rect) in tiles.iter().zip(rects.iter()) {
+                if !tile_rect.contains(pos) {
+                    continue;
+                }
+                if let Some(path) = &tile.key {
+                    if tile.is_directory {
+                        *open = Some(path.clone());
+                    } else if space_can_select(
+                        &SpaceNode {
+                            path: path.clone(),
+                            bytes: tile.bytes,
+                            is_directory: false,
+                            is_purgeable: false,
+                            cloud: engine::CloudStatus::NotCloud,
+                            leaves: 0,
+                            modified: None,
+                        },
+                        &app.home,
+                    ) {
+                        if app.space_selected.contains(path) {
+                            app.space_selected.remove(path);
+                        } else {
+                            app.space_selected.insert(path.clone());
+                        }
+                    }
+                } else if tile.label.starts_with("Other") {
+                    app.space_other_expanded = true;
+                }
+                break;
+            }
+        }
+    }
+    let _ = (folder_total, accent);
+}
+
+fn space_sticky_footer(
+    ui: &mut egui::Ui,
+    app: &mut ScanApp,
+    kids: &[SpaceNode],
+    _folder_total: u64,
+    accent: Color32,
+    busy: bool,
+) {
+    if app.volume_capacity_bytes == 0 {
+        app.refresh_volume_stats();
+    }
+    let used = app.volume_used;
+    let capacity = if app.volume_capacity_bytes > 0 {
+        app.volume_capacity_bytes
+    } else {
+        volume_capacity(&computer_root()).map(|(_, c)| c).unwrap_or(1)
+    };
+    let free = capacity.saturating_sub(used);
+    let fraction = if capacity == 0 { 0.0 } else { used as f32 / capacity as f32 };
+    let selected_bytes: u64 = app
+        .space_selected
+        .iter()
+        .filter_map(|p| kids.iter().find(|n| &n.path == p).map(|n| n.bytes))
+        .sum();
+    let removable: Vec<PathBuf> = app
+        .space_selected
+        .iter()
+        .filter(|path| !is_spared(path, &app.home) && !is_protected(path, &app.home))
+        .cloned()
+        .collect();
+    components::surface_frame().show(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.label(
+                    RichText::new(format!(
+                        "{} of {} used · {} free",
+                        format_bytes(used),
+                        format_bytes(capacity),
+                        format_bytes(free)
+                    ))
+                    .size(SMALL)
+                    .color(WHITE),
+                );
+                thick_meter(ui, fraction, 220.0);
+            });
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = S12;
+                if primary_accent(
+                    ui,
+                    "Review and move to Trash",
+                    !busy && !removable.is_empty(),
+                    accent,
+                )
+                .clicked()
+                {
+                    let mut lines: Vec<String> = removable
+                        .iter()
+                        .take(8)
+                        .map(|p| format!("• {}", file_name(p)))
+                        .collect();
+                    if removable.len() > 8 {
+                        lines.push(format!("… and {} more", removable.len() - 8));
+                    }
+                    app.confirm = Some(Confirm {
+                        heading: format!("Move {} items to the Trash?", removable.len()),
+                        body: format!(
+                            "{}\n\nTotal size about {}. Items go to the Trash only — nothing is permanently deleted.",
+                            lines.join("\n"),
+                            format_bytes(selected_bytes)
+                        ),
+                        action: "Move to Trash",
+                        kind: ConfirmKind::TrashSpace(removable),
+                    });
+                }
+                ui.label(
+                    RichText::new(format!(
+                        "{} selected · {}",
+                        app.space_selected.len(),
+                        format_bytes(selected_bytes)
+                    ))
+                    .monospace()
+                    .size(SMALL)
+                    .color(TEXT_SECONDARY),
+                );
+            });
+        });
+    });
+}
+
+fn volume_capacity(path: &Path) -> Option<(u64, u64)> {
+    // macOS `struct statfs` from `<sys/mount.h>`. 2168 bytes on this SDK.
+    #[repr(C)]
+    struct Statfs {
+        f_bsize: u32,
+        f_iosize: i32,
+        f_blocks: u64,
+        f_bfree: u64,
+        f_bavail: u64,
+        f_files: u64,
+        f_ffree: u64,
+        _rest: [u8; 2120],
+    }
+    extern "C" {
+        fn statfs(path: *const i8, buf: *mut Statfs) -> i32;
+    }
+    let text = path.to_string_lossy();
+    let c_path = std::ffi::CString::new(text.as_bytes()).ok()?;
+    let mut buf = std::mem::MaybeUninit::<Statfs>::zeroed();
+    let rc = unsafe { statfs(c_path.as_ptr(), buf.as_mut_ptr()) };
+    if rc != 0 {
+        return None;
+    }
+    let stat = unsafe { buf.assume_init() };
+    if stat.f_bsize == 0 || stat.f_blocks == 0 {
+        return None;
+    }
+    let block = stat.f_bsize as u64;
+    let capacity = stat.f_blocks.saturating_mul(block);
+    let free = stat.f_bavail.saturating_mul(block);
+    if capacity < free || capacity > 200 * 1024 * 1024 * 1024 * 1024 {
+        return None;
+    }
+    Some((capacity - free, capacity))
 }
 
 fn cloud_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
@@ -2520,7 +3438,6 @@ fn cloud_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
         Screen::Cloud,
         "How much space iCloud Drive and other cloud services use on this Mac. Nothing is signed in, uploaded, or deleted.",
     );
-    safety(ui, Safety::ReadOnly);
     banner(ui, app);
 
     let busy = app.busy;
@@ -2576,7 +3493,6 @@ fn assistant_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
         Screen::Assistant,
         "How hard your Mac is working right now. Press Refresh for a new reading.",
     );
-    safety(ui, Safety::ReadOnly);
     banner(ui, app);
 
     let busy = app.busy;
@@ -2659,28 +3575,6 @@ fn assistant_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
 
 // ───────────────────────────── widgets ─────────────────────────────
 
-fn disk_access_card(ui: &mut egui::Ui, granted: bool) {
-    label_small(ui, "DISK ACCESS");
-    ui.label(
-        RichText::new(if granted { "Full" } else { "Limited" })
-            .size(STAT)
-            .strong()
-            .color(if granted { SUCCESS } else { WARN }),
-    );
-    ui.label(
-        RichText::new(if granted {
-            "Sable can read every folder it needs."
-        } else {
-            "Some folders are off limits, so sizes may look smaller than they are."
-        })
-        .color(TEXT_2)
-        .size(SMALL).line_height(Some(lh(SMALL))),
-    );
-    if !granted && ghost(ui, "Open Privacy settings", true).clicked() {
-        open_url("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles");
-    }
-}
-
 #[derive(Clone, Copy)]
 enum Safety {
     ReadOnly,
@@ -2689,41 +3583,58 @@ enum Safety {
 }
 
 fn safety(ui: &mut egui::Ui, kind: Safety) {
-    let (icon, text, color) = match kind {
-        Safety::ReadOnly => (UiIcon::Eye, "Read-only — nothing on disk is changed", SUCCESS),
-        Safety::Trash => (UiIcon::Trash, "Moves to Trash — you can undo this", WARN),
-        Safety::Admin => (UiIcon::Lock, "May ask for your Mac password", DANGER),
-    };
-    theme::pill_frame().show(ui, |ui| {
-        icon_with_label(ui, icon, text, color);
-    });
+    safety_badge(ui, map_safety(kind));
     ui.add_space(S8);
 }
 
+fn map_safety(kind: Safety) -> SafetyKind {
+    match kind {
+        Safety::ReadOnly => SafetyKind::ReadOnly,
+        Safety::Trash => SafetyKind::Trash,
+        Safety::Admin => SafetyKind::Admin,
+    }
+}
+
 fn page_header(ui: &mut egui::Ui, layout: UiLayout, screen: Screen, subtitle: &str) {
-    theme::surface_card().show(ui, |ui| {
-        ui.horizontal(|ui| {
-            let (icon_rect, _) = ui.allocate_exact_size(Vec2::splat(S32), Sense::hover());
-            paint_screen_icon(ui.painter(), screen, icon_rect, ACCENT_TEXT);
-            ui.add_space(S12);
-            ui.vertical(|ui| {
-                ui.label(RichText::new("SABLE").size(CAPTION).line_height(Some(lh(CAPTION))).color(ACCENT_TEXT).strong());
-                ui.label(
-                    RichText::new(screen.label())
-                        .font(heading_font(layout.title_size()))
-                        .color(TEXT),
-                );
-                ui.add_space(S4);
-                ui.label(
-                    RichText::new(subtitle)
-                        .color(TEXT_2)
-                        .size(layout.subtitle_size())
-                        .line_height(Some(lh(layout.subtitle_size()))),
-                );
-            });
-        });
-    });
-    ui.add_space(S12);
+    let accent = accent_for_screen(screen);
+    let safety_kind = match screen {
+        Screen::Cleanup | Screen::Malware | Screen::Clutter => Safety::Trash,
+        Screen::Protection | Screen::Apps | Screen::Cloud | Screen::Assistant => Safety::ReadOnly,
+        _ => Safety::ReadOnly,
+    };
+    let _ = compact_page_header(
+        ui,
+        screen,
+        layout.title_size(),
+        subtitle,
+        map_safety(safety_kind),
+        accent,
+        None,
+    );
+}
+
+fn page_header_with_action(
+    ui: &mut egui::Ui,
+    layout: UiLayout,
+    screen: Screen,
+    subtitle: &str,
+    action_label: &str,
+    action_enabled: bool,
+) -> bool {
+    let accent = accent_for_screen(screen);
+    let safety_kind = match screen {
+        Screen::Cleanup | Screen::Malware | Screen::Clutter => Safety::Trash,
+        _ => Safety::ReadOnly,
+    };
+    compact_page_header(
+        ui,
+        screen,
+        layout.title_size(),
+        subtitle,
+        map_safety(safety_kind),
+        accent,
+        Some((action_label, action_enabled)),
+    )
 }
 
 fn section(ui: &mut egui::Ui, text: &str) {
@@ -2732,7 +3643,13 @@ fn section(ui: &mut egui::Ui, text: &str) {
 }
 
 fn label_small(ui: &mut egui::Ui, text: &str) {
-    ui.label(RichText::new(text).size(CAPTION).line_height(Some(lh(CAPTION))).color(TEXT_2).strong());
+    ui.label(
+        RichText::new(text)
+            .size(CAPTION)
+            .line_height(Some(lh(CAPTION)))
+            .color(with_alpha(WHITE, 180))
+            .strong(),
+    );
 }
 
 fn step_label(ui: &mut egui::Ui, number: &str, text: &str) {
@@ -2744,12 +3661,12 @@ fn step_label(ui: &mut egui::Ui, number: &str, text: &str) {
 
 fn badge(ui: &mut egui::Ui, text: &str, color: Color32) {
     egui::Frame::none()
-        .fill(badge_fill(color))
-        .stroke(stroke(badge_line(color)))
+        .fill(with_alpha(color, 48))
+        .stroke(stroke(with_alpha(WHITE, 80)))
         .rounding(r_pill())
         .inner_margin(m_xy(S8, S4))
         .show(ui, |ui| {
-            ui.label(RichText::new(text).size(CAPTION).line_height(Some(lh(CAPTION))).color(color));
+            ui.label(RichText::new(text).size(CAPTION).line_height(Some(lh(CAPTION))).color(WHITE));
         });
 }
 
@@ -2800,30 +3717,11 @@ fn hero(ui: &mut egui::Ui, body: impl FnOnce(&mut egui::Ui)) {
 }
 
 fn card(ui: &mut egui::Ui, body: impl FnOnce(&mut egui::Ui)) {
-    theme::surface_card().show(ui, |ui| {
+    components::surface_frame().show(ui, |ui| {
         ui.set_width(ui.available_width());
         body(ui);
     });
-    ui.add_space(S4);
-}
-
-fn summary_card(
-    ui: &mut egui::Ui,
-    label: &str,
-    value: &str,
-    caption: &str,
-    action: &str,
-    busy: bool,
-    on_click: &mut dyn FnMut(),
-) {
-    card(ui, |ui| {
-        label_small(ui, label);
-        ui.label(RichText::new(value).size(STAT).strong());
-        ui.label(RichText::new(caption).color(TEXT_2).size(SMALL).line_height(Some(lh(SMALL))));
-        if ghost(ui, action, !busy).clicked() {
-            on_click();
-        }
-    });
+    ui.add_space(S8);
 }
 
 fn tool_card(
@@ -2902,9 +3800,9 @@ fn row(ui: &mut egui::Ui, selected: bool, clickable: bool, body: impl FnOnce(&mu
         hovered = ui.rect_contains_pointer(response.rect);
     }
     let fill = if selected {
-        ACCENT_SOFT
+        with_alpha(WHITE, 48)
     } else if hovered {
-        SURFACE_RAISED
+        with_alpha(WHITE, 24)
     } else {
         Color32::TRANSPARENT
     };
@@ -2917,11 +3815,7 @@ fn row(ui: &mut egui::Ui, selected: bool, clickable: bool, body: impl FnOnce(&mu
 
 fn avatar(ui: &mut egui::Ui, text: &str, color: Color32) {
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(S32), Sense::hover());
-    ui.painter().rect_filled(
-        rect,
-        r_sm(),
-        avatar_fill(color),
-    );
+    ui.painter().rect_filled(rect, r_sm(), with_alpha(WHITE, 36));
     let letter = text
         .chars()
         .find(|c| c.is_alphanumeric())
@@ -2938,30 +3832,6 @@ fn cloud_label(status: CloudStatus) -> &'static str {
     }
 }
 
-fn bubble(ui: &mut egui::Ui, name: &str, share: f32, selected: bool, compact: bool) -> egui::Response {
-    let scale = if compact { 0.72 } else { 1.0 };
-    let diameter = (36.0 + 70.0 * share.sqrt()) * scale;
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(diameter + S8, diameter + S24), egui::Sense::click());
-    let center = rect.center() - v2(S4, S8);
-    ui.painter().circle_filled(center, diameter / 2.0, if selected { ACCENT } else { SURFACE_RAISED });
-    ui.painter().circle_stroke(center, diameter / 2.0, stroke(if selected { ACCENT } else { BORDER }));
-    ui.painter().text(
-        rect.center_bottom(),
-        egui::Align2::CENTER_BOTTOM,
-        if name.chars().count() > 12 {
-            format!("{}…", name.chars().take(11).collect::<String>())
-        } else {
-            name.to_string()
-        },
-        font_regular(CAPTION),
-        if selected { WHITE } else { TEXT_2 },
-    );
-    if response.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    response
-}
-
 fn meter(ui: &mut egui::Ui, fraction: f32, color: Color32) {
     let width = ui.available_width().clamp(48.0, 220.0);
     meter_with_width(ui, fraction, color, width);
@@ -2969,7 +3839,7 @@ fn meter(ui: &mut egui::Ui, fraction: f32, color: Color32) {
 
 fn meter_with_width(ui: &mut egui::Ui, fraction: f32, color: Color32, width: f32) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width.max(S32), S4), Sense::hover());
-    ui.painter().rect_filled(rect, r_xs(), BORDER);
+    ui.painter().rect_filled(rect, r_xs(), with_alpha(WHITE, 40));
     let fraction = fraction.clamp(0.0, 1.0);
     if fraction > 0.0 {
         let mut fill = rect;
@@ -2995,128 +3865,36 @@ fn stat(ui: &mut egui::Ui, label: &str, value: u64, value_color: Color32) {
     });
 }
 
-fn status_pill(ui: &mut egui::Ui, status: &str, busy: bool, time: f64) {
-    let (color, text) = match status {
-        "paused" => (WARN, "Paused"),
-        "canceling" => (DANGER, "Stopping..."),
-        "cleaning" => (WARN, "Moving to Trash..."),
-        _ if busy => (ACCENT_TEXT, "Working..."),
-        _ => (TEXT_2, "Ready"),
-    };
-    let alpha = if busy { 0.45 + 0.55 * (time * 3.0).sin().abs() as f32 } else { 1.0 };
-    let dot = with_alpha(color, (alpha * 255.0) as u8);
-    theme::pill_frame().show(ui, |ui| {
-        ui.horizontal(|ui| {
-            let (rect, _) = ui.allocate_exact_size(Vec2::splat(S8), Sense::hover());
-            ui.painter().circle_filled(rect.center(), 4.0, dot);
-            ui.label(RichText::new(text).size(SMALL).line_height(Some(lh(SMALL))).color(TEXT));
-        });
-    });
-}
-
 fn field(ui: &mut egui::Ui, text: &mut String, enabled: bool) {
-    ui.add(
-        egui::TextEdit::singleline(text)
-            .desired_width(ui.available_width())
-            .interactive(enabled)
-            .margin(v2(S8, S8))
-            .font(TextStyle::Monospace),
-    );
+    text_field(ui, text, "Path", enabled, true);
 }
 
 fn chip(ui: &mut egui::Ui, label: &str, active: bool) -> egui::Response {
-    let slot = ui.painter().add(Shape::Noop);
-    let response = ui.add(
-        egui::Button::new(
-            RichText::new(label)
-                .size(SMALL)
-                .line_height(Some(lh(SMALL)))
-                .color(if active { WHITE } else { TEXT }),
-        )
-        .frame(false)
-        .rounding(r_pill())
-        .min_size(v2(S4, CHIP_H)),
-    );
-    let hot = response.hovered() || response.is_pointer_button_down_on();
-    let (fill, border) = if response.has_focus() {
-        (if active { if hot { ACCENT_HOVER } else { ACCENT } } else { SURFACE_RAISED }, focus_stroke())
-    } else if active && hot {
-        (ACCENT_HOVER, stroke(ACCENT_TEXT))
-    } else if active {
-        (ACCENT, no_stroke())
-    } else if hot {
-        (SURFACE_RAISED, stroke(ACCENT_TEXT))
-    } else {
-        (SURFACE_RAISED, stroke(BORDER))
-    };
-    ui.painter().set(
-        slot,
-        Shape::Rect(egui::epaint::RectShape::new(response.rect, r_pill(), fill, border)),
-    );
-    response
+    chip_accent(ui, label, active, ACCENT_TEXT)
 }
 
-fn primary_icon(ui: &mut egui::Ui, icon: icons::UiIcon, label: &str, enabled: bool) -> egui::Response {
-    let fg = if enabled { WHITE } else { TEXT_2 };
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = S8;
-        let (rect, _) = ui.allocate_exact_size(Vec2::splat(S16), Sense::hover());
-        icons::paint_ui_icon(ui.painter(), icon, rect, fg);
-        primary(ui, label, enabled)
-    })
-    .inner
+fn chip_accent(ui: &mut egui::Ui, label: &str, active: bool, accent: Color32) -> egui::Response {
+    cmp_chip(ui, label, label, active, accent)
 }
 
 fn primary(ui: &mut egui::Ui, label: &str, enabled: bool) -> egui::Response {
-    let slot = ui.painter().add(Shape::Noop);
-    let response = ui.add_enabled(
-        enabled,
-        egui::Button::new(RichText::new(label).color(if enabled { WHITE } else { TEXT_3 }).strong())
-            .frame(false)
-            .rounding(r_sm())
-            .min_size(v2(BTN_MIN_W, BTN_MIN_H)),
-    );
-    let hot = response.hovered() || response.is_pointer_button_down_on();
-    let (fill, border) = if !enabled {
-        (SURFACE, no_stroke())
-    } else if response.has_focus() {
-        (if hot { ACCENT_HOVER } else { ACCENT }, focus_stroke())
-    } else if hot {
-        (ACCENT_HOVER, stroke(ACCENT_TEXT))
-    } else {
-        (ACCENT, no_stroke())
-    };
-    ui.painter().set(
-        slot,
-        Shape::Rect(egui::epaint::RectShape::new(response.rect, r_sm(), fill, border)),
-    );
-    response
+    primary_accent(ui, label, enabled, ACCENT_TEXT)
+}
+
+fn primary_accent(ui: &mut egui::Ui, label: &str, enabled: bool, accent: Color32) -> egui::Response {
+    cmp_button(ui, label, label, BtnKind::Primary, enabled, accent)
 }
 
 fn ghost(ui: &mut egui::Ui, label: &str, enabled: bool) -> egui::Response {
-    let slot = ui.painter().add(Shape::Noop);
-    let response = ui.add_enabled(
-        enabled,
-        egui::Button::new(RichText::new(label).color(if enabled { TEXT } else { TEXT_3 }))
-            .frame(false)
-            .rounding(r_sm())
-            .min_size(v2(GHOST_MIN_W, GHOST_MIN_H)),
-    );
-    let hot = response.hovered() || response.is_pointer_button_down_on();
-    let (fill, border) = if !enabled {
-        (SURFACE, no_stroke())
-    } else if response.has_focus() {
-        (SURFACE_RAISED, focus_stroke())
-    } else if hot {
-        (SURFACE_RAISED, stroke(ACCENT_TEXT))
-    } else {
-        (SURFACE_RAISED, stroke(BORDER))
-    };
-    ui.painter().set(
-        slot,
-        Shape::Rect(egui::epaint::RectShape::new(response.rect, r_sm(), fill, border)),
-    );
-    response
+    ghost_accent(ui, label, enabled, ACCENT_TEXT)
+}
+
+fn ghost_accent(ui: &mut egui::Ui, label: &str, enabled: bool, accent: Color32) -> egui::Response {
+    cmp_button(ui, label, label, BtnKind::Ghost, enabled, accent)
+}
+
+fn destructive(ui: &mut egui::Ui, label: &str, enabled: bool, accent: Color32) -> egui::Response {
+    cmp_button(ui, label, label, BtnKind::Destructive, enabled, accent)
 }
 
 // ───────────────────────────── helpers ─────────────────────────────
@@ -3150,6 +3928,15 @@ fn reveal(path: &Path) {
 
 fn open_url(url: &str) {
     let _ = Command::new("open").arg(url).spawn();
+}
+
+fn volume_title(path: &str) -> String {
+    let path = Path::new(path);
+    if path == computer_root() {
+        "Macintosh HD".into()
+    } else {
+        file_name(path)
+    }
 }
 
 fn file_name(path: &Path) -> String {

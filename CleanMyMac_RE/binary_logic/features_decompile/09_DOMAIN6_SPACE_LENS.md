@@ -38,7 +38,7 @@ Derived counts, not stored as the primary payload: `leavesCount` (`0x3fe0`), `re
 
 `ScanProgressValue` is the live update: `init(scannedSize: UInt64, currentPath: String?)` at `0x3558`, `activePath` getter at `0x3914`.
 
-`CloudStatus` and `SpaceLensCloudScannerStrategy` are enums (equality and hash only; case names were not dumped).
+`CloudStatus` reflection names, in order: `notCloud`, `cloudEvicted`, `cloudLocal`. Classifier `FUN_0000236c` returns `0` / `1` / `2`. Mapping those names onto those returns is inferred. `SpaceLensCloudScannerStrategy` case names were not recovered. Raw byte `1` selects the `lstat` / `SF_DATALESS` path.
 
 ## Walk and handoff
 
@@ -65,38 +65,46 @@ The tree is the entity. The planner flattens it to path, byte size, and a remova
 ```text
 SpaceLensScanTasksFactory(fullDiskAccess, fileManager)
   createScanTask(directory, cloudStrategy) -> SpaceLensScanTask
-    PathFilter + VolumeChecker + ProgressTracker
-    emits ScanProgressValue(scannedSize, currentPath)
-    builds SpaceLensFileSystemEntity
-      path, size, isDirectory, isPurgeable, cloudStatus, children
-SpaceLensDeletionPlanner.units(for:shouldSpare:)
-  -> [Unit(path, size, removableLeavesCount)]
-UI reads the entity tree or the unit list
-  bubble layout: not observed
+    PathFilter + CloudStorageHelper + ProgressTracker
+    maxConcurrentScans = 4 (stored; no second read in this slice)
+async FUN_00007b54
+  FUN_00008134 lists one directory
+    skip customIgnorePaths, "/.nofollow", "/.nofollow/"
+    file size keys: NSURLFileSizeKey and NSURLTotalFileAllocatedSizeKey
+    cloud: FUN_0000236c, or lstat SF_DATALESS when strategy byte is 1
+  sum child sizes (stride 0x28), then progress task-switch
+leavesCount / removableLeavesCount are later tree reductions
+SpaceLensDeletionPlanner.units(for:shouldSpare:) -> [Unit]
+UI: SpaceLensViewController + BubbleUIConfig + BubblesPackingLayout
 ```
 
-## Rust sketch (clean room)
+Node bytes, proven by the walk store and the count getters:
 
-- `tokio::spawn` one walk per directory the user picked. Send `ScanProgress { scanned_size: u64, current_path: Option<String> }` on a channel.
-- Owned tree:
+| Offset | Field |
+|--------|--------|
+| `+0x00` | `path` |
+| `+0x10` | `size` |
+| `+0x18` | `isDirectory` |
+| `+0x19` | `isPurgeable` |
+| `+0x1a` | `cloudStatus` |
+| `+0x20` | `children` |
 
-```rust
-struct Node {
-    path: String,
-    size: u64,
-    is_directory: bool,
-    is_purgeable: bool,
-    children: Vec<Node>,
-}
-```
+`leavesCount`: purgeable node returns 0 and is not opened. Non-purgeable file returns 1. Non-purgeable directory sums children. Checked add.
 
-- A second pass computes leaf counts. Do not store them as the source of truth.
-- The UI only reads `size` values. Proportional bubbles are a view over that array, not something this binary was shown to serialize.
-- Skip the walk when full-disk access is denied, matching the factory’s permission parameter.
+`removableLeavesCount`: same, except a file counts only when `cloudStatus != 1` (evicted / not-downloaded / dataless).
+
+Directory `size` in the async caller is the sum of child `size` fields. Which of the two URL size keys is stored on a leaf was not recovered.
+
+## Rust
+
+Recovered flow, not original source: [excerpts/space_lens_flow.rs](excerpts/space_lens_flow.rs).
 
 ## Unknown
 
-- How `size` is summed (catalog attributes versus recursive add). `createScanTask` only builds the task object.
-- `CloudStatus` case names.
-- Whether `0x3558` is the unit init or the progress init. The two demangled symbols share that address in `nm` output.
-- Any frontend bubble structure.
+- Which of `fileSize` and `totalFileAllocatedSize` is written into `Entity.size`.
+- `SpaceLensCloudScannerStrategy` case names. Only raw byte `1` vs other is visible.
+- Where `isPurgeable` becomes true. The leaf store in `FUN_00008134` writes it false.
+- Who reads `maxConcurrentScans` after the store at `0xd3bc`.
+- `0x3558` is still three symbols on one address: unit `init`, progress `init`, `scannedSize` getter.
+- `FUN_00005cb8` (deletion flatten, 2164 bytes) was not expanded. `units()` in the Rust file follows the public signature only.
+- `BubblesPackingLayout` radius formula. Bubble classes are in `SpaceLensUI`; packing math was not decompiled.

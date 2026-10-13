@@ -40,8 +40,8 @@ pub use performance::{
 pub use remove::{RemovalPlan, RemoveTask};
 pub use scan::{run_scan, ScanConfig};
 pub use space::{
-    computer_root, is_spared, scan_space, trash_selected, CloudStatus, SpaceNode, SpaceReport,
-    SPACE_LENS_BUBBLE_THRESHOLD,
+    cloud_status, computer_root, deletion_units, is_spared, scan_space, trash_selected, CloudScannerStrategy,
+    CloudStatus, DeletionUnit, SpaceNode, SpaceReport, SPACE_LENS_BUBBLE_THRESHOLD,
 };
 pub use threats::{prepare_and_scan, remember_ignore, trash_threat, ThreatHit, ThreatReport};
 
