@@ -4,6 +4,37 @@ Pure-Rust desktop scanner. The engine walks a directory in chunks, checks each f
 
 The control flow is a clean-room of the scan pipeline notes under `../CleanMyMac_RE/` (enumerate, chunk, check, separate removal plan).
 
+## Install
+
+GitHub Releases is the download. Open the `.dmg` for your Mac, then drag **Sable** onto **Applications**.
+
+The build is not notarized, so the first open is blocked until you allow it:
+
+1. Control-click **Sable** in Applications and choose **Open**.
+2. Confirm **Open** in the dialog. Later launches are normal.
+
+Apple Silicon downloads are named `arm64`. Intel downloads are named `x64`. The GitHub Action builds on Apple Silicon.
+
+### Publish a release
+
+This folder has to be the root of its own GitHub repository. Do not publish the parent experiment tree.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release workflow builds `Sable-0.1.0-macos-arm64.dmg` and a zip, then attaches both to that tag.
+
+A local installer, without GitHub:
+
+```bash
+make package
+open dist/Sable-*.dmg
+```
+
+`make install` copies `Sable.app` into `/Applications`. `PREFIX=$HOME/Applications make install` uses another folder.
+
 ## Requirements
 
 - Rust 1.80 or newer (`rustup update stable`)
@@ -11,11 +42,13 @@ The control flow is a clean-room of the scan pipeline notes under `../CleanMyMac
 
 ## Build and run
 
-From this directory:
+From this directory, `make help` lists the targets.
 
 ```bash
-cargo test -p engine
-cargo run -p ui
+make test
+make run
+make release
+make package
 ```
 
 `cargo test -p engine` covers cancel, chunked walk, an extension watch hit, and a removal plan that does not unlink.
