@@ -1,79 +1,62 @@
 # Clean Your Mac
 
-Pure-Rust desktop scanner. The engine walks a directory in chunks, checks each file through a detector trait, and reports progress. The window is egui. Nothing in this workspace deletes files or ships malware signatures.
-
-The control flow is a clean-room of the scan pipeline notes under `../CleanMyMac_RE/` (enumerate, chunk, check, separate removal plan).
+A Mac app that shows what uses your disk and moves caches, leftovers, and large downloads to the Trash only after you confirm.
 
 ## Install
 
-GitHub Releases is the download. Open the `.dmg` for your Mac, then drag **Clean Your Mac** onto **Applications**.
+1. Open the [latest release](https://github.com/h3ma209/CleanYourMac/releases/latest).
+2. Download the disk image.
+   - Apple Silicon: `CleanYourMac-*-macos-arm64.dmg`
+   - Intel: `CleanYourMac-*-macos-x64.dmg`
+3. Open the disk image.
+4. Drag **Clean Your Mac** onto **Applications**.
+5. Eject the disk image.
 
-The build is not notarized, so the first open is blocked until you allow it:
+The app is not notarized, so macOS blocks the first launch.
 
-1. Control-click **Clean Your Mac** in Applications and choose **Open**.
-2. Confirm **Open** in the dialog. Later launches are normal.
+1. In Applications, Control-click **Clean Your Mac**.
+2. Choose **Open**, then choose **Open** again.
 
-Apple Silicon downloads are named `arm64`. Intel downloads are named `x64`. The GitHub Action builds on Apple Silicon.
+Later launches are normal.
 
-### Publish a release
+## What it does
 
-This folder has to be the root of its own GitHub repository. Do not publish the parent experiment tree.
+| Screen | What you get |
+| --- | --- |
+| Overview | Health check of the Mac |
+| Free Up Space | Caches and logs, with sizes |
+| Apps | Installed apps and files they left behind |
+| Tune-Up | Startup items, DNS flush, Spotlight |
+| File Finder | Installers and archives. Does not change files |
+| Threat Scan | Files compared to known malware hashes |
+| Big Downloads | Large files in Downloads |
+| Space Lens | Disk map. One scan, then folders open from that map |
+| Cloud Storage | Local iCloud and other cloud folder sizes |
+| System Monitor | Live CPU and memory |
 
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
+Anything that removes a file asks first and uses the Trash. Scanning the whole Mac needs Full Disk Access. Desktop, Documents, and Downloads need Files and Folders access.
 
-The release workflow builds `CleanYourMac-0.1.0-macos-arm64.dmg` and a zip, then attaches both to that tag.
+## Build from source
 
-A local installer, without GitHub:
+Rust 1.80 or newer. Run these from this folder.
 
 ```bash
 make package
 open dist/CleanYourMac-*.dmg
 ```
 
-`make install` copies `Clean Your Mac.app` into `/Applications`. `PREFIX=$HOME/Applications make install` uses another folder.
-
-## Requirements
-
-- Rust 1.80 or newer (`rustup update stable`)
-- A desktop session (`make run` opens the window)
-
-## Build and run
-
-From this directory, `make help` lists the targets.
-
-```bash
-make test
-make run
-make release
-make package
-```
-
-`cargo test -p engine` covers cancel, chunked walk, an extension watch hit, and a removal plan that does not unlink.
-
-`make run` opens the Clean Your Mac window. The sidebar switches features:
-
-Each screen opens with a plain-language explanation and a badge: read-only, moves to Trash (undoable), or may ask for a password. Screens fill themselves on first open. Anything that moves a file shows a confirmation first.
-
-- Overview: how much space you can free, app count, startup items, disk access
-- Free Up Space: caches and logs, sized, each group can go to the Trash
-- Apps: searchable list; click an app to see files it left in your Library
-- Tune-Up: startup items, flush DNS, check or rebuild Spotlight
-- File Finder: pick a folder and file types (installers, archives...); lists matches, never changes files
-- Big Downloads: files of 50 MB or more in Downloads, one at a time to the Trash
-- Disk Usage: folder sizes with drill-down (Open / Up one level)
-- Cloud Folders: iCloud and CloudStorage sizes
-- Live Stats: CPU and memory with a plain verdict
-
-Hits and surveys do not unlink files. Trash goes through Finder and only accepts the surveyed cache or log roots. Spotlight reindex may ask for an administrator.
-
-## Layout
+`make install` copies the app into `/Applications`. `make help` lists the other commands.
 
 ```text
-crates/engine   walk, execution control, detector, scan task, removal plan
-crates/ui       eframe shell
+crates/engine   scan, trash plan, disk map
+crates/ui       the window
 ```
 
-Swap the UI later without changing `engine`. Slint can replace `crates/ui`. Tauri is not used here because the UI is Rust.
+## Publish a download
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+GitHub Actions builds the disk image and zip and attaches them to that release.

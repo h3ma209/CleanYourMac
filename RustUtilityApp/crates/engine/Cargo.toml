@@ -2,8 +2,10 @@
 name = "engine"
 version = "0.1.0"
 edition = "2021"
-description = "Chunked directory scan pipeline with a pluggable detector"
+description = "Disk scan and trash plan for Clean Your Mac"
 license = "MIT"
+keywords = ["macos", "disk-usage", "cleanup"]
+categories = ["os", "filesystem"]
 
 [dependencies]
 async-trait = "0.1"

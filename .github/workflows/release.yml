@@ -18,8 +18,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: RustUtilityApp
 
       - name: Package Clean Your Mac.app
+        working-directory: RustUtilityApp
         run: make package
 
       - name: Attach installers to the GitHub release
@@ -28,5 +31,5 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            dist/*.dmg
-            dist/*.zip
+            RustUtilityApp/dist/*.dmg
+            RustUtilityApp/dist/*.zip

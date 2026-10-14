@@ -2,8 +2,10 @@
 name = "clean-your-mac"
 version = "0.1.0"
 edition = "2021"
-description = "Clean Your Mac"
+description = "Mac app for disk space, caches, and downloads you choose to trash"
 license = "MIT"
+keywords = ["macos", "disk-usage", "cleanup", "egui"]
+categories = ["gui"]
 
 [dependencies]
 eframe = "0.29"
