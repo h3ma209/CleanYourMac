@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build dist/Sable.app plus a disk image and a zip for GitHub Releases.
+# Build "Clean Your Mac.app" plus a disk image and a zip for GitHub Releases.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,20 +13,20 @@ fi
 
 export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-12.0}"
 
-echo "Building Sable ${version} for ${MACOSX_DEPLOYMENT_TARGET}+"
-cargo build -p ui --release
+echo "Building Clean Your Mac ${version} for ${MACOSX_DEPLOYMENT_TARGET}+"
+cargo build -p clean-your-mac --release
 
-app="$root/dist/Sable.app"
+app="$root/dist/Clean Your Mac.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 
-cp "$root/target/release/ui" "$app/Contents/MacOS/Sable"
-chmod +x "$app/Contents/MacOS/Sable"
+cp "$root/target/release/clean-your-mac" "$app/Contents/MacOS/CleanYourMac"
+chmod +x "$app/Contents/MacOS/CleanYourMac"
 printf 'APPL????' > "$app/Contents/PkgInfo"
 
-iconset="$(mktemp -d)/Sable.iconset"
+iconset="$(mktemp -d)/CleanYourMac.iconset"
 python3 "$root/scripts/make_icon.py" "$iconset"
-iconutil -c icns "$iconset" -o "$app/Contents/Resources/Sable.icns"
+iconutil -c icns "$iconset" -o "$app/Contents/Resources/CleanYourMac.icns"
 rm -rf "$(dirname "$iconset")"
 
 sed "s/VERSION/${version}/g" "$root/packaging/macos/Info.plist" > "$app/Contents/Info.plist"
@@ -44,13 +44,13 @@ case "$arch_name" in
 esac
 
 stage="$(mktemp -d)"
-cp -R "$app" "$stage/Sable.app"
+cp -R "$app" "$stage/Clean Your Mac.app"
 ln -s /Applications "$stage/Applications"
-dmg="$root/dist/Sable-${version}-macos-${arch_label}.dmg"
-hdiutil create -volname "Sable" -srcfolder "$stage" -ov -format UDZO "$dmg"
+dmg="$root/dist/CleanYourMac-${version}-macos-${arch_label}.dmg"
+hdiutil create -volname "Clean Your Mac" -srcfolder "$stage" -ov -format UDZO "$dmg"
 rm -rf "$stage"
 
-zip="$root/dist/Sable-${version}-macos-${arch_label}.zip"
+zip="$root/dist/CleanYourMac-${version}-macos-${arch_label}.zip"
 rm -f "$zip"
 ditto -c -k --keepParent "$app" "$zip"
 

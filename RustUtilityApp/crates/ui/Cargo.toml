@@ -1,8 +1,8 @@
 [package]
-name = "ui"
+name = "clean-your-mac"
 version = "0.1.0"
 edition = "2021"
-description = "egui shell for the scan engine"
+description = "Clean Your Mac"
 license = "MIT"
 
 [dependencies]

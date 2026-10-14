@@ -103,8 +103,8 @@ pub const BTN_DISABLED: Color32 = Color32::from_rgb(0x53, 0x53, 0x53);
 
 pub const CTA_H: f32 = 48.0;
 
-/// Labeled rail. Wide enough for “System Monitor” at `SMALL`.
-pub const RAIL_W: f32 = 176.0;
+/// Labeled rail. Wide enough for “Clean Your Mac”.
+pub const RAIL_W: f32 = 228.0;
 
 pub fn glass_fill() -> Color32 {
     Color32::from_rgba_unmultiplied(255, 255, 255, 38)

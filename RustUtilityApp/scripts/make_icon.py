@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw Sable's green mark into a macOS .iconset directory."""
+"""Draw the Clean Your Mac mark into a macOS .iconset directory."""
 
 import math
 import struct

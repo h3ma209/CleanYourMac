@@ -2,26 +2,26 @@ use eframe::egui::{self, FontData, FontDefinitions, FontFamily, Stroke, Style, T
 
 use crate::tokens::{self, font_regular, font_semi, focus_stroke, m_all, m_xy, r_md, r_pill, r_sm, stroke};
 
-const FONT_REGULAR: &[u8] = include_bytes!("../assets/SableUI-Regular.ttf");
-const FONT_SEMIBOLD: &[u8] = include_bytes!("../assets/SableUI-SemiBold.ttf");
+const FONT_REGULAR: &[u8] = include_bytes!("../assets/CleanYourMac-Regular.ttf");
+const FONT_SEMIBOLD: &[u8] = include_bytes!("../assets/CleanYourMac-SemiBold.ttf");
 
 pub fn install_fonts(ctx: &egui::Context) {
     let mut fonts = FontDefinitions::default();
     fonts
         .font_data
-        .insert("sable_regular".into(), FontData::from_static(FONT_REGULAR));
+        .insert("clean_your_mac_regular".into(), FontData::from_static(FONT_REGULAR));
     fonts
         .font_data
-        .insert("sable_semibold".into(), FontData::from_static(FONT_SEMIBOLD));
+        .insert("clean_your_mac_semibold".into(), FontData::from_static(FONT_SEMIBOLD));
 
     fonts
         .families
         .entry(FontFamily::Proportional)
         .or_default()
-        .insert(0, "sable_regular".into());
+        .insert(0, "clean_your_mac_regular".into());
     fonts
         .families
-        .insert(FontFamily::Name("semibold".into()), vec!["sable_semibold".into()]);
+        .insert(FontFamily::Name("semibold".into()), vec!["clean_your_mac_semibold".into()]);
 
     ctx.set_fonts(fonts);
 }

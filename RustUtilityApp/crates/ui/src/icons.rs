@@ -142,7 +142,7 @@ pub fn heading_font(size: f32) -> FontId {
     font_semi(size)
 }
 
-/// Original glass marks for module landings. Geometry is Sable's, not a traced asset.
+/// Original glass marks for module landings. Geometry is not a traced asset.
 #[derive(Clone, Copy, Debug)]
 pub enum HeroKind {
     Folder,

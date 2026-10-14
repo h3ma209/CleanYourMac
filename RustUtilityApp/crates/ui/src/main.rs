@@ -193,7 +193,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "Sable",
+        "Clean Your Mac",
         options,
         Box::new(|cc| {
             apply_theme(&cc.egui_ctx);
@@ -899,7 +899,7 @@ impl ScanApp {
         let needs_fda = root == mac || (root.starts_with(&mac) && !root.starts_with(&self.home));
         if needs_fda && self.access != AccessStatus::Granted {
             Some(
-                "Full Disk Access is required to scan this drive. Open System Settings → Privacy & Security → Full Disk Access, enable Sable, then press Scan again.".into(),
+                "Full Disk Access is required to scan this drive. Open System Settings → Privacy & Security → Full Disk Access, enable Clean Your Mac, then press Scan again.".into(),
             )
         } else {
             None
@@ -1338,11 +1338,11 @@ fn rail_brand(ui: &mut egui::Ui) {
     ui.painter().text(
         mark.right_center() + v2(S8, 0.0),
         Align2::LEFT_CENTER,
-        "Sable",
+        "Clean Your Mac",
         font_semi(TITLE),
         WHITE,
     );
-    response.on_hover_text("Sable — Mac cleaner and tune-up");
+    response.on_hover_text("Clean Your Mac — Mac cleaner and tune-up");
 }
 
 fn rail_group_label(ui: &mut egui::Ui, label: &str) {
@@ -2114,7 +2114,7 @@ fn performance_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
         app.load(Screen::Performance);
     }
     if !app.loaded.contains(&Screen::Performance) {
-        empty(ui, "Press Scan", "Sable will list maintenance actions and startup items.");
+        empty(ui, "Press Scan", "Clean Your Mac will list maintenance actions and startup items.");
         return;
     }
 
@@ -2307,7 +2307,7 @@ fn protection_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
     let busy = app.busy;
     if app.access != AccessStatus::Granted {
         card(ui, |ui| {
-            ui.label(RichText::new("Sable has limited disk access").color(WARN).strong());
+            ui.label(RichText::new("Clean Your Mac has limited disk access").color(WARN).strong());
             ui.label(
                 RichText::new("Some folders cannot be read and will be skipped. Grant Full Disk Access to include them.")
                     .color(TEXT_2)
@@ -2690,7 +2690,7 @@ fn clutter_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
         app.start_clutter();
     }
     if !app.loaded.contains(&Screen::Clutter) {
-        empty(ui, "Press Scan", "Sable will list large downloads.");
+        empty(ui, "Press Scan", "Clean Your Mac will list large downloads.");
         return;
     }
 
@@ -2815,7 +2815,7 @@ fn space_lens_permission_card(ui: &mut egui::Ui, app: &ScanApp) {
             ui.label(RichText::new("Full Disk Access needed").color(WARN).strong());
             ui.label(
                 RichText::new(
-                    "To scan the whole Mac, allow Full Disk Access for Sable in System Settings. Without it, scanning stops here.",
+                    "To scan the whole Mac, allow Full Disk Access for Clean Your Mac in System Settings. Without it, scanning stops here.",
                 )
                 .color(TEXT_2)
                 .size(SMALL)
@@ -2834,7 +2834,7 @@ fn space_lens_permission_card(ui: &mut egui::Ui, app: &ScanApp) {
             ui.label(
                 RichText::new(
                     "macOS blocks apps from reading Desktop, Downloads, and Documents until you allow it. \
-                     In System Settings → Privacy & Security → Files and Folders, enable those folders for Sable, \
+                     In System Settings → Privacy & Security → Files and Folders, enable those folders for Clean Your Mac, \
                      or grant Full Disk Access, then press Scan again.",
                 )
                 .color(TEXT_2)

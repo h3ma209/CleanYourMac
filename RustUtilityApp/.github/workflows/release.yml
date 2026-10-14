@@ -19,7 +19,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Package Sable.app
+      - name: Package Clean Your Mac.app
         run: make package
 
       - name: Attach installers to the GitHub release

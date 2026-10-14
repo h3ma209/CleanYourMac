@@ -602,6 +602,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clean-your-mac"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "engine",
+ "tokio",
+]
+
+[[package]]
 name = "clipboard-win"
 version = "5.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3141,15 +3150,6 @@ dependencies = [
  "memoffset",
  "tempfile",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "ui"
-version = "0.1.0"
-dependencies = [
- "eframe",
- "engine",
- "tokio",
 ]
 
 [[package]]

@@ -39,7 +39,7 @@ pub struct ThreatReport {
 }
 
 pub fn support_dir(home: &Path) -> PathBuf {
-    home.join("Library/Application Support/Sable")
+    home.join("Library/Application Support/Clean Your Mac")
 }
 
 pub fn signature_cache_path(home: &Path) -> PathBuf {
@@ -144,7 +144,7 @@ fn download_feed(dest: &Path) -> Result<(), String> {
             "--max-time",
             "60",
             "-A",
-            "Sable",
+            "Clean Your Mac",
             "-o",
         ])
         .arg(dest)
@@ -339,10 +339,10 @@ mod tests {
 
     #[test]
     fn scan_matches_a_known_hash_and_skips_private_names() {
-        let dir = std::env::temp_dir().join(format!("sable_threat_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("clean_your_mac_threat_{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join("Cookies")).unwrap();
-        fs::write(dir.join("sample.bin"), b"sable-threat-sample").unwrap();
+        fs::write(dir.join("sample.bin"), b"clean-your-mac-threat-sample").unwrap();
         fs::write(dir.join("Cookies").join("Cookies.binarycookies"), b"nope").unwrap();
         let hash = sha256_file(&dir.join("sample.bin")).unwrap();
         let mut signatures = HashSet::new();

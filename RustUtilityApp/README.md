@@ -1,4 +1,4 @@
-# Rust Utility
+# Clean Your Mac
 
 Pure-Rust desktop scanner. The engine walks a directory in chunks, checks each file through a detector trait, and reports progress. The window is egui. Nothing in this workspace deletes files or ships malware signatures.
 
@@ -6,11 +6,11 @@ The control flow is a clean-room of the scan pipeline notes under `../CleanMyMac
 
 ## Install
 
-GitHub Releases is the download. Open the `.dmg` for your Mac, then drag **Sable** onto **Applications**.
+GitHub Releases is the download. Open the `.dmg` for your Mac, then drag **Clean Your Mac** onto **Applications**.
 
 The build is not notarized, so the first open is blocked until you allow it:
 
-1. Control-click **Sable** in Applications and choose **Open**.
+1. Control-click **Clean Your Mac** in Applications and choose **Open**.
 2. Confirm **Open** in the dialog. Later launches are normal.
 
 Apple Silicon downloads are named `arm64`. Intel downloads are named `x64`. The GitHub Action builds on Apple Silicon.
@@ -24,21 +24,21 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release workflow builds `Sable-0.1.0-macos-arm64.dmg` and a zip, then attaches both to that tag.
+The release workflow builds `CleanYourMac-0.1.0-macos-arm64.dmg` and a zip, then attaches both to that tag.
 
 A local installer, without GitHub:
 
 ```bash
 make package
-open dist/Sable-*.dmg
+open dist/CleanYourMac-*.dmg
 ```
 
-`make install` copies `Sable.app` into `/Applications`. `PREFIX=$HOME/Applications make install` uses another folder.
+`make install` copies `Clean Your Mac.app` into `/Applications`. `PREFIX=$HOME/Applications make install` uses another folder.
 
 ## Requirements
 
 - Rust 1.80 or newer (`rustup update stable`)
-- A desktop session (the `ui` crate opens a native window)
+- A desktop session (`make run` opens the window)
 
 ## Build and run
 
@@ -53,7 +53,7 @@ make package
 
 `cargo test -p engine` covers cancel, chunked walk, an extension watch hit, and a removal plan that does not unlink.
 
-`cargo run -p ui` opens the Sable window. The sidebar switches features:
+`make run` opens the Clean Your Mac window. The sidebar switches features:
 
 Each screen opens with a plain-language explanation and a badge: read-only, moves to Trash (undoable), or may ask for a password. Screens fill themselves on first open. Anything that moves a file shows a confirmation first.
 
