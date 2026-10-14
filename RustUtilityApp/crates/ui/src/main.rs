@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -11,16 +11,15 @@ use eframe::egui::{
 use engine::{
     flush_dns_cache, folder_access, junk_roots, large_downloads, launch_agents, local_cloud_folders,
     machine_sample, move_download_to_trash, move_root_to_trash, reindex_spotlight, run_care, run_scan,
-    scan_space, spotlight_status, survey_leftovers, trash_selected, prepare_and_scan, remember_ignore, trash_threat, computer_root, is_spared, AccessStatus, CareReport, CloudFolder, CloudStatus, Detection, ThreatReport,
+    home_folder_access, scan_space_volume, space_folder, space_report_at, spotlight_status, survey_leftovers, trash_selected, prepare_and_scan, remember_ignore, trash_threat, computer_root, is_spared, volume_contains, AccessStatus, CareReport, CloudFolder, CloudStatus, Detection, ThreatReport,
     SPACE_LENS_BUBBLE_THRESHOLD, SpaceNode,
     ExecutionControl, ExtensionWatchDetector, InstalledApp, JunkRoot, LargeFile, LaunchAgent, LeftoverHit,
-    MachineSample, ScanConfig, ScanEvent, SpaceReport,
+    MachineSample, ScanConfig, ScanEvent, SpaceEntity, SpaceReport, SpaceVolumeScan,
 };
 use tokio::sync::mpsc;
 
 mod components;
 mod icons;
-mod space_lens;
 mod theme;
 mod tokens;
 
@@ -30,7 +29,6 @@ use components::{
     accent_for_screen, compact_page_header, paint_app_background, tab_bar, text_field, BtnKind,
     SafetyKind, ACTION_COL_W,
 };
-use space_lens::{category_for, fit_label, is_hidden_name, is_protected, layout_treemap, thick_meter, SpaceCategory, TreemapTile};
 use components::{
     button as cmp_button, button_sized, chip as cmp_chip, label_small as cmp_label_small, list_actions, safety_badge,
     scroll_list,
@@ -177,7 +175,7 @@ enum UiMsg {
     Apps(Vec<InstalledApp>),
     Leftovers(Vec<LeftoverHit>),
     Sample(MachineSample),
-    Space(SpaceReport),
+    Space { id: u64, volume: SpaceVolumeScan, report: SpaceReport },
     Threat(Result<ThreatReport, String>),
     Clutter(Vec<LargeFile>),
     Cloud(Vec<CloudFolder>),
@@ -238,7 +236,10 @@ struct ScanApp {
     sample: Option<MachineSample>,
     space_root: String,
     space: Option<SpaceReport>,
+    /// Full volume tree from the last Scan. Folder clicks read this, like CMM `rootNode`.
+    space_volume: Option<SpaceVolumeScan>,
     space_selected: HashSet<PathBuf>,
+    space_selected_bytes: HashMap<PathBuf, u64>,
     space_hover: Option<PathBuf>,
     threat_root: String,
     threat: Option<ThreatReport>,
@@ -246,8 +247,11 @@ struct ScanApp {
     cloud: Vec<CloudFolder>,
     access: AccessStatus,
     events: Option<mpsc::Receiver<UiMsg>>,
+    event_tx: Option<mpsc::Sender<UiMsg>>,
     control: Option<Arc<ExecutionControl>>,
     busy: bool,
+    /// Ignores stale `UiMsg::Space` results after back, forward, or a newer scan.
+    space_scan_id: u64,
     layout: UiLayout,
     /// 0 = home account, 1 = Macintosh HD. Module scans still read the home folder.
     landing_volume: u8,
@@ -261,11 +265,6 @@ struct ScanApp {
     perf_tab: usize,
     clutter_tab: usize,
     malware_show_skipped: bool,
-    space_show_hidden: bool,
-    space_sort_by_name: bool,
-    space_other_expanded: bool,
-    volume_used: u64,
-    volume_capacity_bytes: u64,
 }
 
 impl ScanApp {
@@ -274,8 +273,9 @@ impl ScanApp {
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("/tmp"));
         let threat_root = home.join("Downloads").display().to_string();
+        let space_root = home.display().to_string();
         let access = folder_access(Path::new("/Library/Application Support"));
-        let mut app = Self {
+        Self {
             runtime,
             screen: Screen::Care,
             root: home.join("Downloads").display().to_string(),
@@ -300,9 +300,11 @@ impl ScanApp {
             leftovers_done: false,
             selected_app: None,
             sample: None,
-            space_root: computer_root().display().to_string(),
+            space_root,
             space: None,
+            space_volume: None,
             space_selected: HashSet::new(),
+            space_selected_bytes: HashMap::new(),
             space_hover: None,
             threat_root,
             threat: None,
@@ -310,8 +312,10 @@ impl ScanApp {
             cloud: Vec::new(),
             access,
             events: None,
+            event_tx: None,
             control: None,
             busy: false,
+            space_scan_id: 0,
             layout: UiLayout::from_viewport(WINDOW_W),
             landing_volume: 0,
             care_picks: HashSet::from([
@@ -328,60 +332,58 @@ impl ScanApp {
             perf_tab: 0,
             clutter_tab: 0,
             malware_show_skipped: false,
-            space_show_hidden: false,
-            space_sort_by_name: false,
-            space_other_expanded: false,
-            volume_used: 0,
-            volume_capacity_bytes: 0,
-        };
-        app.refresh_volume_stats();
-        app
-    }
-
-    fn refresh_volume_stats(&mut self) {
-        let root = computer_root();
-        if let Some((used, cap)) = volume_capacity(&root) {
-            self.volume_used = used;
-            self.volume_capacity_bytes = cap;
         }
     }
 
     fn space_open(&mut self, path: PathBuf) {
-        if self.busy {
+        let next = path.display().to_string();
+        if next == self.space_root.trim() {
             return;
         }
-        let next = path.display().to_string();
-        if next == self.space_root {
+        let Some(volume) = self.space_volume.as_ref() else {
+            self.notice = Some(Notice {
+                ok: false,
+                text: "Press Scan once. Folders open from that map.".into(),
+                refresh: None,
+            });
+            return;
+        };
+        if !volume_contains(volume, &path) {
+            self.notice = Some(Notice {
+                ok: false,
+                text: "That folder is not in the current map. Press Scan to rebuild.".into(),
+                refresh: None,
+            });
             return;
         }
         self.space_future.clear();
-        self.space_history.push(self.space_root.clone());
+        self.space_history.push(self.space_root.trim().to_string());
         self.space_root = next;
-        self.start_space();
+        self.space_selected.clear();
+        self.space_selected_bytes.clear();
+        self.space_hover = None;
     }
 
     fn space_back(&mut self) {
-        if self.busy {
-            return;
-        }
         let Some(prev) = self.space_history.pop() else {
             return;
         };
-        self.space_future.push(self.space_root.clone());
+        self.space_future.push(self.space_root.trim().to_string());
         self.space_root = prev;
-        self.start_space();
+        self.space_selected.clear();
+        self.space_selected_bytes.clear();
+        self.space_hover = None;
     }
 
     fn space_forward(&mut self) {
-        if self.busy {
-            return;
-        }
         let Some(next) = self.space_future.pop() else {
             return;
         };
-        self.space_history.push(self.space_root.clone());
+        self.space_history.push(self.space_root.trim().to_string());
         self.space_root = next;
-        self.start_space();
+        self.space_selected.clear();
+        self.space_selected_bytes.clear();
+        self.space_hover = None;
     }
 
     fn dock_run(&mut self) {
@@ -406,7 +408,7 @@ impl ScanApp {
             }
             Screen::Space => {
                 self.care_followups.clear();
-                self.start_space();
+                self.start_space(false);
             }
             _ => {}
         }
@@ -475,9 +477,17 @@ impl ScanApp {
         self.notice = None;
     }
 
+    fn event_sender(&mut self) -> mpsc::Sender<UiMsg> {
+        if self.event_tx.is_none() {
+            let (tx, rx) = mpsc::channel(256);
+            self.event_tx = Some(tx.clone());
+            self.events = Some(rx);
+        }
+        self.event_tx.as_ref().expect("event channel").clone()
+    }
+
     fn arm(&mut self) -> mpsc::Sender<UiMsg> {
-        let (tx, rx) = mpsc::channel(256);
-        self.events = Some(rx);
+        let tx = self.event_sender();
         self.busy = true;
         tx
     }
@@ -719,7 +729,7 @@ impl ScanApp {
             return;
         }
         let home = self.home.clone();
-        let root = self.space.as_ref().map(|report| report.root.clone()).unwrap_or_default();
+        let root = PathBuf::from(self.space_root.trim());
         let tx = self.arm();
         self.status = "cleaning";
         self.runtime.spawn(async move {
@@ -797,10 +807,7 @@ impl ScanApp {
         });
     }
 
-    fn start_space(&mut self) {
-        if self.busy {
-            return;
-        }
+    fn start_space(&mut self, force_rescan: bool) {
         let trimmed = self.space_root.trim();
         if trimmed.is_empty() {
             self.notice = Some(Notice {
@@ -810,18 +817,34 @@ impl ScanApp {
             });
             return;
         }
-        let root = PathBuf::from(trimmed);
-        if !root.exists() {
+        let folder = PathBuf::from(trimmed);
+        if !force_rescan {
+            if let Some(volume) = self.space_volume.as_ref() {
+                if let Some(report) = space_report_at(volume, &folder) {
+                    self.space_root = report.root.display().to_string();
+                    self.space = Some(report);
+                    self.space_selected.clear();
+                    self.space_selected_bytes.clear();
+                    self.space_hover = None;
+                    return;
+                }
+                self.notice = Some(Notice {
+                    ok: false,
+                    text: "That folder is not in the current map. Press Scan to rebuild from the selected root.".into(),
+                    refresh: None,
+                });
+                return;
+            }
+        }
+        if !folder.exists() {
             self.notice = Some(Notice {
                 ok: false,
-                text: format!("That folder does not exist: {}", root.display()),
+                text: format!("That folder does not exist: {}", folder.display()),
                 refresh: None,
             });
             return;
         }
-        self.space = None;
-        self.space_selected.clear();
-        self.space_hover = None;
+        self.space_root = normalize_space_path(trimmed);
         self.access = folder_access(Path::new("/Library/Application Support"));
         if let Some(message) = self.space_scan_blocked_message() {
             self.notice = Some(Notice {
@@ -831,11 +854,42 @@ impl ScanApp {
             });
             return;
         }
-        let tx = self.arm();
+
+        if self.busy && !force_rescan {
+            return;
+        }
+
+        let view_folder = folder.clone();
+        let volume_scan_root = self
+            .space_volume
+            .as_ref()
+            .map(|volume| volume.scan_root.clone())
+            .unwrap_or_else(|| view_folder.clone());
+        if force_rescan {
+            self.space_volume = None;
+        }
+        self.space = None;
+        self.space_selected.clear();
+        self.space_selected_bytes.clear();
+        self.space_hover = None;
+        self.space_scan_id = self.space_scan_id.wrapping_add(1);
+        let scan_id = self.space_scan_id;
+        let tx = self.event_sender();
+        self.busy = true;
         self.status = "scanning";
+        let scan_root = if force_rescan {
+            volume_scan_root
+        } else {
+            view_folder.clone()
+        };
         self.runtime.spawn(async move {
-            let report = scan_space(root).await;
-            let _ = tx.send(UiMsg::Space(report)).await;
+            let volume = scan_space_volume(scan_root).await;
+            let report = space_report_at(&volume, &view_folder).unwrap_or(SpaceReport {
+                root: view_folder,
+                total: 0,
+                children: Vec::new(),
+            });
+            let _ = tx.send(UiMsg::Space { id: scan_id, volume, report }).await;
         });
     }
 
@@ -917,12 +971,17 @@ impl ScanApp {
                     self.finish();
                 }
                 UiMsg::Note(notice) => {
+                    let rescan_space = notice.refresh == Some(Screen::Space);
                     if let Some(screen) = notice.refresh {
                         self.loaded.remove(&screen);
                         self.loaded.remove(&Screen::Care);
                     }
                     self.notice = Some(notice);
                     self.finish();
+                    if rescan_space && self.screen == Screen::Space {
+                        self.space_volume = None;
+                        self.start_space(true);
+                    }
                 }
                 UiMsg::Agents(agents) => {
                     self.agents = agents;
@@ -953,12 +1012,16 @@ impl ScanApp {
                     }
                     self.finish();
                 }
-                UiMsg::Space(report) => {
-                    self.space_root = report.root.display().to_string();
+                UiMsg::Space { id, volume, report } => {
+                    if id != self.space_scan_id {
+                        continue;
+                    }
+                    self.space_volume = Some(volume);
+                    self.space_root = normalize_space_path(&report.root.display().to_string());
                     self.space = Some(report);
                     self.space_selected.clear();
+                    self.space_selected_bytes.clear();
                     self.space_hover = None;
-                    self.refresh_volume_stats();
                     self.finish();
                 }
                 UiMsg::Clutter(files) => {
@@ -2742,35 +2805,52 @@ fn format_modified(secs: Option<u64>) -> String {
 }
 
 fn space_lens_permission_card(ui: &mut egui::Ui, app: &ScanApp) {
-    if app.access == AccessStatus::Granted {
-        return;
+    let home = path_place(&app.home.display().to_string());
+    let here = path_place(app.space_root.trim());
+    let at_home = here == home || here.starts_with(&format!("{home}/"));
+    let home_denied = at_home && home_folder_access(&app.home) == AccessStatus::Denied;
+
+    if app.space_scan_blocked_message().is_some() {
+        card(ui, |ui| {
+            ui.label(RichText::new("Full Disk Access needed").color(WARN).strong());
+            ui.label(
+                RichText::new(
+                    "To scan the whole Mac, allow Full Disk Access for Sable in System Settings. Without it, scanning stops here.",
+                )
+                .color(TEXT_2)
+                .size(SMALL)
+                .line_height(Some(lh(SMALL))),
+            );
+            if ghost(ui, "Open Privacy settings", true).clicked() {
+                open_url("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles");
+            }
+        });
+        ui.add_space(S8);
     }
-    if app.space_scan_blocked_message().is_none() {
-        return;
+
+    if home_denied {
+        card(ui, |ui| {
+            ui.label(RichText::new("Desktop & Downloads access").color(WARN).strong());
+            ui.label(
+                RichText::new(
+                    "macOS blocks apps from reading Desktop, Downloads, and Documents until you allow it. \
+                     In System Settings → Privacy & Security → Files and Folders, enable those folders for Sable, \
+                     or grant Full Disk Access, then press Scan again.",
+                )
+                .color(TEXT_2)
+                .size(SMALL)
+                .line_height(Some(lh(SMALL))),
+            );
+            if ghost(ui, "Open Privacy settings", true).clicked() {
+                open_url("x-apple.systempreferences:com.apple.preference.security?Privacy");
+            }
+        });
+        ui.add_space(S8);
     }
-    card(ui, |ui| {
-        ui.label(RichText::new("Full Disk Access needed").color(WARN).strong());
-        ui.label(
-            RichText::new(
-                "To scan the whole Mac, allow Full Disk Access for Sable in System Settings. Without it, scanning stops here.",
-            )
-            .color(TEXT_2)
-            .size(SMALL).line_height(Some(lh(SMALL))),
-        );
-        if ghost(ui, "Open Privacy settings", true).clicked() {
-            open_url("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles");
-        }
-    });
-    ui.add_space(S8);
 }
 
-fn space_lens_hover_card(ctx: &egui::Context, home: &Path, hover: &SpaceNode, parent_total: u64) {
+fn space_lens_hover_card(ctx: &egui::Context, home: &Path, hover: &SpaceNode) {
     let pointer = ctx.input(|i| i.pointer.hover_pos()).unwrap_or_else(|| ctx.screen_rect().center());
-    let pct = if parent_total > 0 {
-        (hover.bytes as f64 / parent_total as f64) * 100.0
-    } else {
-        0.0
-    };
     egui::Area::new(egui::Id::new("space_lens_hover"))
         .order(egui::Order::Tooltip)
         .fixed_pos(pointer + v2(S16, S16))
@@ -2778,619 +2858,487 @@ fn space_lens_hover_card(ctx: &egui::Context, home: &Path, hover: &SpaceNode, pa
             egui::Frame::popup(&ctx.style()).show(ui, |ui| {
                 ui.set_max_width(360.0);
                 ui.label(RichText::new(file_name(&hover.path)).strong());
-                ui.label(
-                    RichText::new(pretty(home, &hover.path))
-                        .size(CAPTION)
-                        .color(TEXT_SECONDARY)
-                        .monospace(),
-                );
+                ui.label(RichText::new(pretty(home, &hover.path)).size(CAPTION).line_height(Some(lh(CAPTION))).color(TEXT_2).monospace());
                 ui.separator();
-                ui.label(RichText::new(format!("Size: {} ({pct:.1}% of folder)", format_bytes(hover.bytes))).size(SMALL));
-                ui.label(RichText::new("Double-click to open · Right-click Show in Finder").size(CAPTION).color(ACCENT_TEXT));
+                ui.label(RichText::new(format!("Type: {}", space_item_kind(hover))).size(SMALL).line_height(Some(lh(SMALL))));
+                ui.label(RichText::new(format!("Size: {}", format_bytes(hover.bytes))).size(SMALL).line_height(Some(lh(SMALL))));
+                ui.label(RichText::new(format_modified(hover.modified)).size(SMALL).line_height(Some(lh(SMALL))).color(TEXT_2));
+                ui.label(RichText::new(cloud_label(hover.cloud)).size(CAPTION).line_height(Some(lh(CAPTION))).color(TEXT_2));
+                if hover.is_directory {
+                    ui.label(RichText::new("Click to zoom into this folder").size(CAPTION).line_height(Some(lh(CAPTION))).color(ACCENT_TEXT));
+                }
             });
         });
-}
-
-fn nav_chevron(ui: &mut egui::Ui, salt: &str, back: bool, enabled: bool, accent: Color32) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(S32), if enabled { Sense::click() } else { Sense::hover() });
-    let fill = if !enabled {
-        BTN_DISABLED
-    } else if response.is_pointer_button_down_on() {
-        with_alpha(accent, 120)
-    } else if response.hovered() {
-        with_alpha(WHITE, 24)
-    } else {
-        with_alpha(WHITE, 12)
-    };
-    ui.painter().rect_filled(rect, r_sm(), fill);
-    if enabled && response.has_focus() {
-        ui.painter().rect_stroke(rect.expand(S4), r_sm(), focus_stroke());
-    }
-    let c = rect.center();
-    let d = 5.0;
-    if back {
-        ui.painter().line_segment([c + v2(d, 0.0), c + v2(-d, -d)], Stroke::new(2.0, if enabled { WHITE } else { TEXT_SECONDARY }));
-        ui.painter().line_segment([c + v2(-d, -d), c + v2(-d, d)], Stroke::new(2.0, if enabled { WHITE } else { TEXT_SECONDARY }));
-    } else {
-        ui.painter().line_segment([c + v2(-d, 0.0), c + v2(d, -d)], Stroke::new(2.0, if enabled { WHITE } else { TEXT_SECONDARY }));
-        ui.painter().line_segment([c + v2(d, -d), c + v2(d, d)], Stroke::new(2.0, if enabled { WHITE } else { TEXT_SECONDARY }));
-    }
-    let _ = salt;
-    response
-}
-
-fn space_breadcrumb(ui: &mut egui::Ui, app: &ScanApp, accent: Color32, busy: bool) -> (Option<PathBuf>, bool, bool) {
-    let mut jump = None;
-    let mut back = false;
-    let mut forward = false;
-    let data = computer_root();
-    let current = PathBuf::from(app.space_root.trim());
-    let mut crumbs: Vec<(String, PathBuf)> = vec![("Macintosh HD".into(), data.clone())];
-    if let Ok(rest) = current.strip_prefix(&data) {
-        let mut acc = data.clone();
-        for comp in rest.components() {
-            if let std::path::Component::Normal(name) = comp {
-                acc.push(name);
-                crumbs.push((name.to_string_lossy().into_owned(), acc.clone()));
-            }
-        }
-    } else if current != data {
-        crumbs.push((file_name(&current), current.clone()));
-    }
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = S4;
-        let can_back = !busy && !app.space_history.is_empty();
-        let can_fwd = !busy && !app.space_future.is_empty();
-        if nav_chevron(ui, "sp_back", true, can_back, accent).clicked() {
-            back = true;
-        }
-        if nav_chevron(ui, "sp_fwd", false, can_fwd, accent).clicked() {
-            forward = true;
-        }
-        for (i, (label, path)) in crumbs.iter().enumerate() {
-            if i > 0 {
-                ui.label(RichText::new("›").color(TEXT_SECONDARY));
-            }
-            let active = i == crumbs.len() - 1;
-            let r = ui.add(
-                egui::Label::new(RichText::new(label).color(if active { WHITE } else { accent }).size(SMALL))
-                    .sense(if active || busy { Sense::hover() } else { Sense::click() }),
-            );
-            if r.clicked() && !active && !busy {
-                jump = Some(path.clone());
-            }
-        }
-    });
-    (jump, back, forward)
-}
-
-fn space_node_unreadable(node: &SpaceNode) -> bool {
-    node.bytes == 0 && node.is_directory
-}
-
-fn space_reconcile_tiles(app: &ScanApp, kids: &[SpaceNode], other_bytes: u64, folder_total: u64) -> Vec<TreemapTile> {
-    let mut tiles: Vec<TreemapTile> = kids
-        .iter()
-        .map(|node| TreemapTile {
-            key: Some(node.path.clone()),
-            label: file_name(&node.path),
-            bytes: node.bytes,
-            category: category_for(&node.path, &app.home),
-            is_directory: node.is_directory,
-            unreadable: space_node_unreadable(node),
-        })
-        .collect();
-    if other_bytes > 0 {
-        tiles.push(TreemapTile {
-            key: None,
-            label: "Other".into(),
-            bytes: other_bytes,
-            category: SpaceCategory::Other,
-            is_directory: false,
-            unreadable: false,
-        });
-    }
-    let at_volume = PathBuf::from(app.space_root.trim()) == computer_root();
-    if at_volume && app.volume_capacity_bytes > 0 {
-        let listed: u64 = folder_total;
-        let used = app.volume_used;
-        if used > listed {
-            tiles.push(TreemapTile {
-                key: None,
-                label: "System, snapshots and other".into(),
-                bytes: used - listed,
-                category: SpaceCategory::Unaccounted,
-                is_directory: false,
-                unreadable: false,
-            });
-        }
-        let free = app.volume_capacity_bytes.saturating_sub(used);
-        if free > 0 {
-            tiles.push(TreemapTile {
-                key: None,
-                label: "Free space".into(),
-                bytes: free,
-                category: SpaceCategory::Free,
-                is_directory: false,
-                unreadable: false,
-            });
-        }
-    }
-    tiles
 }
 
 fn space_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
     let accent = accent_for_screen(Screen::Space);
-    let busy = app.busy;
+    ui.ctx().input(|input| {
+        if input.key_pressed(egui::Key::ArrowLeft) && input.modifiers.alt {
+            app.space_back();
+        }
+        if input.key_pressed(egui::Key::ArrowRight) && input.modifiers.alt {
+            app.space_forward();
+        }
+    });
     banner(ui, app);
-    components::surface_frame().show(ui, |ui| {
-        ui.set_min_width(ui.available_width());
-        ui.horizontal(|ui| {
-            let (icon_rect, _) = ui.allocate_exact_size(Vec2::splat(S32), Sense::hover());
-            paint_screen_icon(ui.painter(), Screen::Space, icon_rect, accent);
-            ui.add_space(S12);
-            ui.vertical(|ui| {
-                ui.label(RichText::new("Space Lens").font(heading_font(H2)).color(WHITE));
-                ui.label(
-                    RichText::new("Treemap and list of disk usage. Area equals size.")
-                        .color(TEXT_SECONDARY)
-                        .size(SMALL),
-                );
-                ui.add_space(S8);
-                ui.horizontal(|ui| {
-                    components::safety_badge(ui, SafetyKind::ReadOnly);
-                    ui.add_space(S8);
-                    components::safety_badge(ui, SafetyKind::Trash);
-                });
-            });
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if app.last_refresh.is_some() {
-                    ui.label(
-                        RichText::new(format!("Last scanned: {}", scan_age(app.last_refresh)))
-                            .color(TEXT_SECONDARY)
-                            .size(CAPTION),
-                    );
-                }
-                if primary_accent(ui, if busy { "Scanning…" } else { "Rescan" }, !busy, accent).clicked() {
-                    app.start_space();
-                }
-            });
-        });
-    });
-    ui.add_space(S8);
-    let (jump, back, fwd) = space_breadcrumb(ui, app, accent, busy);
-    if back {
-        app.space_back();
-    }
-    if fwd {
-        app.space_forward();
-    }
-    if let Some(path) = jump {
-        app.space_open(path);
-    }
     ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(format!(
-                "{} items",
-                app.space.as_ref().map(|r| r.children.len()).unwrap_or(0)
-            ))
-            .color(TEXT_SECONDARY)
-            .size(SMALL),
-        );
+        if page_header_with_action(
+            ui,
+            app.layout,
+            Screen::Space,
+            "Visual map of what uses disk space on the selected volume.",
+            "Scan",
+            !app.busy,
+        ) {
+            app.start_space(true);
+        }
+        if app.busy && ghost(ui, "Cancel", true).clicked() {
+            app.space_scan_id = app.space_scan_id.wrapping_add(1);
+            app.finish();
+        }
     });
+    space_top_bar(ui, app, accent);
     space_lens_permission_card(ui, app);
 
-    let mut open: Option<PathBuf> = None;
-    let mut reveal_path: Option<PathBuf> = None;
-    let footer_h = 72.0;
-    let body_h = (ui.available_height() - footer_h - S8).max(200.0);
-
-    let report = app.space.clone();
-    let Some(report) = report else {
-        ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), body_h), Layout::top_down(Align::Center), |ui| {
-            if busy {
-                loading_line(ui, "Building your storage map...");
-            } else {
-                ui.label(RichText::new("Press Rescan to map this disk.").color(TEXT_SECONDARY));
-            }
-        });
-        space_sticky_footer(ui, app, &[], 0, accent, busy);
+    let busy = app.busy;
+    let folder_path = PathBuf::from(app.space_root.trim());
+    if app.space_volume.is_none() {
+        let footer_h = 72.0;
+        let body_h = (ui.available_height() - footer_h).max(120.0);
+        ui.allocate_ui_with_layout(
+            Vec2::new(ui.available_width(), body_h),
+            Layout::top_down(Align::Center),
+            |ui| {
+                ui.add_space((body_h * 0.32).min(160.0));
+                if busy {
+                    let target = volume_title(app.space_root.trim());
+                    loading_line(ui, &format!("Building storage map for {target}…"));
+                } else {
+                    ui.label(
+                        RichText::new("Press Scan to map this disk.")
+                            .color(with_alpha(WHITE, 220))
+                            .size(BODY),
+                    );
+                }
+            },
+        );
+        space_footer(ui, app, 0, 0);
         return;
-    };
-
-    let folder_total = report.total;
-    let mut kids: Vec<SpaceNode> = report
-        .children
-        .iter()
-        .filter(|n| app.space_show_hidden || !is_hidden_name(&n.path))
-        .cloned()
-        .collect();
-    if app.space_sort_by_name {
-        kids.sort_by(|a, b| file_name(&a.path).cmp(&file_name(&b.path)));
-    } else {
-        kids.sort_by(|a, b| b.bytes.cmp(&a.bytes));
     }
-    let threshold = (folder_total as f32 * SPACE_LENS_BUBBLE_THRESHOLD).max(1.0) as u64;
-    let mut main_nodes = Vec::new();
-    let mut small_nodes = Vec::new();
-    for node in &kids {
-        if node.bytes >= threshold {
-            main_nodes.push(node.clone());
+
+    let mut gesture = SpaceGesture::default();
+    let footer_h = 78.0;
+    let body_h = (ui.available_height() - footer_h).max(260.0);
+    let compact = app.layout.compact || ui.available_width() < 860.0;
+    let in_map = app
+        .space_volume
+        .as_ref()
+        .is_some_and(|volume| space_folder(volume, &folder_path).is_some());
+    if !in_map {
+        empty(ui, "Not in this map", "Press Scan to include this folder.");
+        space_footer(ui, app, 0, 0);
+        return;
+    }
+    let selected = &app.space_selected;
+    let home = &app.home;
+    let volume = app.space_volume.as_ref().unwrap();
+    let folder = space_folder(volume, &folder_path).unwrap();
+        let mut bubbles = Vec::new();
+        let mut shown = 0u64;
+        let total = folder.total.max(1);
+        for child in folder.children {
+            if (child.bytes as f32) / (total as f32) < SPACE_LENS_BUBBLE_THRESHOLD {
+                break;
+            }
+            shown = shown.saturating_add(child.bytes);
+            bubbles.push(entity_bubble(child));
+        }
+        let other_bytes = folder.total.saturating_sub(shown);
+        if folder.children.is_empty() {
+            empty(ui, "Nothing to show", "This folder is empty or cannot be read.");
+        } else if compact {
+            space_list(
+                ui,
+                selected,
+                home,
+                &volume_title(&folder.path.display().to_string()),
+                folder.children,
+                220.0,
+                busy,
+                &mut gesture,
+            );
+            ui.add_space(S8);
+            space_orbit(ui, selected, home, &bubbles, other_bytes, total, 280.0, busy, &mut gesture);
         } else {
-            small_nodes.push(node.clone());
+            let list_w = 280.0;
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = S16;
+                ui.allocate_ui_with_layout(Vec2::new(list_w, body_h), Layout::top_down(Align::Min), |ui| {
+                    ui.set_width(list_w);
+                    space_list(
+                        ui,
+                        selected,
+                        home,
+                        &volume_title(&folder.path.display().to_string()),
+                        folder.children,
+                        body_h,
+                        busy,
+                        &mut gesture,
+                    );
+                });
+                ui.allocate_ui_with_layout(
+                    Vec2::new((ui.available_width() - S8).max(200.0), body_h),
+                    Layout::top_down(Align::Min),
+                    |ui| {
+                        space_orbit(ui, selected, home, &bubbles, other_bytes, total, body_h, busy, &mut gesture);
+                    },
+                );
+            });
         }
-    }
-    let other_bytes: u64 = small_nodes.iter().map(|n| n.bytes).sum();
-    let (readable, unreadable): (Vec<_>, Vec<_>) = kids.iter().partition(|n| !space_node_unreadable(n));
-    let tiles = space_reconcile_tiles(app, &main_nodes, other_bytes, folder_total);
-
-    let list_w = (ui.available_width() * 0.4).clamp(280.0, 480.0);
-    ui.horizontal_top(|ui| {
-        ui.spacing_mut().item_spacing.x = S16;
-        ui.allocate_ui_with_layout(Vec2::new(list_w, body_h), Layout::top_down(Align::Min), |ui| {
-            space_list_panel(ui, app, readable, unreadable, other_bytes, &small_nodes, folder_total, body_h, busy, accent, &mut open, &mut reveal_path);
-        });
-        ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), body_h), Layout::top_down(Align::Min), |ui| {
-            space_treemap_panel(ui, app, &tiles, folder_total, body_h, busy, accent, &mut open);
-        });
-    });
-
-    if let Some(hover_path) = app.space_hover.clone() {
-        if let Some(node) = kids.iter().find(|node| node.path == hover_path) {
-            space_lens_hover_card(ui.ctx(), &app.home, node, folder_total.max(1));
+        if let Some(node) = &gesture.hover {
+            space_lens_hover_card(ui.ctx(), home, node);
         }
+    if gesture.clear_selection {
+        app.space_selected.clear();
+        app.space_selected_bytes.clear();
     }
-
-    space_sticky_footer(ui, app, &kids, folder_total, accent, busy);
-
-    if let Some(path) = reveal_path {
+    if let Some(path) = gesture.reveal {
         reveal(&path);
     }
-    if let Some(path) = open {
+    if let Some((path, bytes)) = gesture.toggle {
+        if app.space_selected.contains(&path) {
+            app.space_selected.remove(&path);
+            app.space_selected_bytes.remove(&path);
+        } else {
+            app.space_selected.insert(path.clone());
+            app.space_selected_bytes.insert(path, bytes);
+        }
+    }
+    if let Some(node) = gesture.hover {
+        app.space_hover = Some(node.path);
+    }
+    let selected_bytes = app.space_selected_bytes.values().sum();
+    space_footer(ui, app, selected_bytes, 0);
+    if let Some(path) = gesture.open {
         app.space_open(path);
     }
 }
 
-fn space_can_select(node: &SpaceNode, home: &Path) -> bool {
-    !space_node_unreadable(node)
-        && !is_protected(&node.path, home)
-        && (!node.is_directory || node.path.extension().is_some_and(|e| e == "app"))
-}
-
-fn space_list_panel(
-    ui: &mut egui::Ui,
-    app: &mut ScanApp,
-    readable: Vec<&SpaceNode>,
-    unreadable: Vec<&SpaceNode>,
-    other_bytes: u64,
-    small_nodes: &[SpaceNode],
-    folder_total: u64,
-    height: f32,
-    busy: bool,
-    accent: Color32,
-    open: &mut Option<PathBuf>,
-    reveal_path: &mut Option<PathBuf>,
-) {
-    ui.horizontal(|ui| {
-        ui.checkbox(&mut app.space_show_hidden, "Show hidden");
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if ui.button(if app.space_sort_by_name { "Sort: Name ▼" } else { "Sort: Size ▼" }).clicked() {
-                app.space_sort_by_name = !app.space_sort_by_name;
+fn space_top_bar(ui: &mut egui::Ui, app: &mut ScanApp, accent: Color32) {
+    let title = volume_title(app.space_root.trim());
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::hover());
+    ui.painter().text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        if title.is_empty() { "Macintosh HD".into() } else { title },
+        font_semi(TITLE),
+        WHITE,
+    );
+    let mut go_back = false;
+    let mut go_forward = false;
+    ui.allocate_new_ui(
+        egui::UiBuilder::new().max_rect(Rect::from_min_size(rect.min, Vec2::new(200.0, 40.0))),
+        |ui| {
+        ui.horizontal(|ui| {
+            if ghost_accent(ui, "Back", !app.busy && !app.space_history.is_empty(), accent).clicked() {
+                go_back = true;
             }
-            egui::ComboBox::from_id_salt("space_select_menu")
-                .selected_text("Select…")
-                .show_ui(ui, |ui| {
-                    if ui.selectable_label(false, "None").clicked() {
-                        app.space_selected.clear();
-                    }
-                    if ui.selectable_label(false, "All removable").clicked() {
-                        app.space_selected.clear();
-                        for node in readable.iter().copied().chain(unreadable.iter().copied()) {
-                            if space_can_select(node, &app.home) {
-                                app.space_selected.insert(node.path.clone());
-                            }
-                        }
-                    }
-                    if ui.selectable_label(false, "Largest 10").clicked() {
-                        app.space_selected.clear();
-                        for node in readable.iter().take(10) {
-                            if space_can_select(node, &app.home) {
-                                app.space_selected.insert(node.path.clone());
-                            }
-                        }
-                    }
-                });
+            if ghost_accent(ui, "Forward", !app.busy && !app.space_future.is_empty(), accent).clicked() {
+                go_forward = true;
+            }
         });
+    });
+    if go_back {
+        app.space_back();
+    }
+    if go_forward {
+        app.space_forward();
+    }
+    let current = path_place(&app.space_root);
+    let mac = path_place(&computer_root().display().to_string());
+    let home = path_place(&app.home.display().to_string());
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing = v2(S8, S4);
+        if chip_accent(ui, "This Mac", current == mac, accent).clicked() {
+            app.space_open(computer_root());
+        }
+        if chip_accent(ui, "Home", current == home, accent).clicked() {
+            app.space_open(app.home.clone());
+        }
     });
     ui.add_space(S8);
-    components::surface_frame().show(ui, |ui| {
-        egui::ScrollArea::vertical()
-            .id_salt("space_list")
-            .auto_shrink([false; 2])
-            .max_height(height - 48.0)
-            .show(ui, |ui| {
-                for node in readable {
-                    space_list_row(ui, app, node, folder_total, busy, accent, open, reveal_path);
-                }
-                if other_bytes > 0 {
-                    ui.add_space(S8);
-                    let header = ui.horizontal(|ui| {
-                        ui.label(RichText::new("Other (small items)").strong());
-                        ui.label(RichText::new(format_bytes(other_bytes)).monospace().color(TEXT_SECONDARY));
-                        if ui.small_button(if app.space_other_expanded { "▾" } else { "▸" }).clicked() {
-                            app.space_other_expanded = !app.space_other_expanded;
-                        }
-                    });
-                    let _ = header;
-                    if app.space_other_expanded {
-                        for node in small_nodes {
-                            space_list_row(ui, app, node, folder_total, busy, accent, open, reveal_path);
-                        }
-                    }
-                }
-                if !unreadable.is_empty() {
-                    ui.add_space(S8);
-                    ui.label(RichText::new("Empty or unreadable").size(CAPTION).color(TEXT_SECONDARY).strong());
-                    for node in unreadable {
-                        ui.horizontal(|ui| {
-                            paint_ui_icon(ui.painter(), UiIcon::Lock, Rect::from_min_size(ui.cursor().min, Vec2::splat(16.0)), WARN);
-                            ui.label(RichText::new(file_name(&node.path)).color(TEXT_SECONDARY).size(SMALL));
-                            ui.label(RichText::new("No access").color(WARN).size(CAPTION));
-                        });
-                    }
-                }
-            });
-    });
 }
 
-fn space_list_row(
-    ui: &mut egui::Ui,
-    app: &mut ScanApp,
-    node: &SpaceNode,
-    folder_total: u64,
-    busy: bool,
-    accent: Color32,
-    open: &mut Option<PathBuf>,
-    reveal_path: &mut Option<PathBuf>,
-) {
-    let protected = is_protected(&node.path, &app.home);
-    let can_check = space_can_select(node, &app.home);
-    let selected = app.space_selected.contains(&node.path);
-    let hovered = app.space_hover.as_ref() == Some(&node.path);
-    let share = if folder_total > 0 {
-        node.bytes as f32 / folder_total as f32
-    } else {
-        0.0
-    };
-    let response = row(ui, selected || hovered, true, |ui| {
-        ui.horizontal(|ui| {
-            if can_check {
-                let check = Rect::from_min_size(ui.cursor().min, Vec2::splat(S24));
-                let on = app.space_selected.contains(&node.path);
-                if task_check(ui, check, &node.path.display().to_string(), on, !busy).clicked() {
-                    if on {
-                        app.space_selected.remove(&node.path);
-                    } else {
-                        app.space_selected.insert(node.path.clone());
-                    }
-                }
-            } else if protected {
-                let (lock, _) = ui.allocate_exact_size(Vec2::splat(S24), Sense::hover());
-                paint_ui_icon(ui.painter(), UiIcon::Lock, lock.shrink(4.0), TEXT_SECONDARY);
-            } else {
-                ui.add_space(S24);
-            }
-            let (icon_rect, _) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::hover());
-            if node.path.extension().is_some_and(|e| e == "app") {
-                paint_screen_icon(ui.painter(), Screen::Apps, icon_rect, accent);
-            } else if node.is_directory {
-                paint_ui_icon(ui.painter(), UiIcon::Folder, icon_rect, WHITE);
-            } else {
-                paint_ui_icon(ui.painter(), UiIcon::Info, icon_rect, WHITE);
-            }
-            let name = file_name(&node.path);
-            let name_resp = ui.add(egui::Label::new(RichText::new(shorten(&name, 28)).size(SMALL)).sense(Sense::hover()));
-            name_resp.on_hover_text(&name);
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.label(RichText::new(format_bytes(node.bytes)).monospace().size(SMALL));
-                let bar_w = 72.0;
-                let (bar, _) = ui.allocate_exact_size(Vec2::new(bar_w, S4), Sense::hover());
-                let mut fill = bar;
-                fill.set_width((bar_w * share).max(2.0));
-                ui.painter().rect_filled(bar, r_xs(), with_alpha(WHITE, 30));
-                ui.painter().rect_filled(fill, r_xs(), accent);
-            });
-        });
-    });
-    if response.hovered() {
-        app.space_hover = Some(node.path.clone());
-    }
-    if response.double_clicked() && node.is_directory && !busy {
-        *open = Some(node.path.clone());
-    }
-    if response.secondary_clicked() {
-        *reveal_path = Some(node.path.clone());
+#[derive(Default)]
+struct SpaceGesture {
+    open: Option<PathBuf>,
+    reveal: Option<PathBuf>,
+    toggle: Option<(PathBuf, u64)>,
+    hover: Option<SpaceNode>,
+    clear_selection: bool,
+}
+
+fn entity_bubble(entity: &SpaceEntity) -> SpaceNode {
+    SpaceNode {
+        path: entity.path.clone(),
+        bytes: entity.bytes,
+        is_directory: entity.is_directory,
+        is_purgeable: entity.is_purgeable,
+        cloud: entity.cloud,
+        leaves: entity.leaves,
+        modified: entity.modified,
     }
 }
 
-fn space_treemap_panel(
+fn path_place(path: &str) -> String {
+    let text = path.trim();
+    text.strip_prefix("/System/Volumes/Data").unwrap_or(text).to_string()
+}
+
+fn space_list(
     ui: &mut egui::Ui,
-    app: &mut ScanApp,
-    tiles: &[TreemapTile],
-    folder_total: u64,
+    selected_paths: &HashSet<PathBuf>,
+    home: &Path,
+    title: &str,
+    kids: &[SpaceEntity],
     height: f32,
     busy: bool,
-    accent: Color32,
-    open: &mut Option<PathBuf>,
+    gesture: &mut SpaceGesture,
 ) {
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = S8;
-        for cat in [
-            SpaceCategory::User,
-            SpaceCategory::Apps,
-            SpaceCategory::System,
-            SpaceCategory::Caches,
-            SpaceCategory::Other,
-            SpaceCategory::Free,
-            SpaceCategory::Unaccounted,
-        ] {
-            ui.label(RichText::new("■").color(cat.color()));
-            ui.label(RichText::new(cat.label()).size(CAPTION).color(TEXT_SECONDARY));
-        }
-    });
-    ui.add_space(S4);
-    let bytes: Vec<u64> = tiles.iter().map(|t| t.bytes).collect();
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height - 28.0), Sense::click());
-    let rects = layout_treemap(&bytes, rect.shrink(S4));
-    let clip = ui.painter().with_clip_rect(rect);
-    for (tile, tile_rect) in tiles.iter().zip(rects.iter()) {
-        if tile_rect.width() < 1.0 {
-            continue;
-        }
-        let selected = tile.key.as_ref().is_some_and(|p| app.space_selected.contains(p));
-        let hovered = tile.key.as_ref().is_some_and(|p| app.space_hover.as_ref() == Some(p));
-        let fill = with_alpha(tile.category.color(), if selected { 220 } else if hovered { 180 } else { 140 });
-        clip.rect_filled(*tile_rect, r_xs(), fill);
-        if selected || hovered {
-            clip.rect_stroke(*tile_rect, r_xs(), Stroke::new(2.0, WHITE));
-        }
-        let label = fit_label(ui.painter(), &tile.label, tile_rect.width() - S8, font_semi(CAPTION));
-        if !label.is_empty() && tile_rect.height() > 20.0 {
-            clip.text(tile_rect.center(), Align2::CENTER_CENTER, label, font_semi(CAPTION), WHITE);
-        }
+    ui.label(RichText::new(title).font(heading_font(TITLE)).color(WHITE));
+    ui.label(
+        RichText::new(format!("{} items", kids.len()))
+            .size(SMALL)
+            .color(with_alpha(WHITE, 190)),
+    );
+    ui.add_space(S8);
+    let select_label = if selected_paths.is_empty() {
+        "Select: None".to_string()
+    } else {
+        format!("Select: {}", selected_paths.len())
+    };
+    if ghost(ui, &select_label, !busy && !selected_paths.is_empty()).clicked() {
+        gesture.clear_selection = true;
     }
-    if let Some(pos) = response.hover_pos() {
-        for (tile, tile_rect) in tiles.iter().zip(rects.iter()) {
-            if tile_rect.contains(pos) {
-                if let Some(path) = &tile.key {
-                    app.space_hover = Some(path.clone());
-                }
-                break;
-            }
-        }
-    }
-    if response.clicked() && !busy {
-        if let Some(pos) = response.interact_pointer_pos() {
-            for (tile, tile_rect) in tiles.iter().zip(rects.iter()) {
-                if !tile_rect.contains(pos) {
-                    continue;
-                }
-                if let Some(path) = &tile.key {
-                    if tile.is_directory {
-                        *open = Some(path.clone());
-                    } else if space_can_select(
-                        &SpaceNode {
-                            path: path.clone(),
-                            bytes: tile.bytes,
-                            is_directory: false,
-                            is_purgeable: false,
-                            cloud: engine::CloudStatus::NotCloud,
-                            leaves: 0,
-                            modified: None,
-                        },
-                        &app.home,
-                    ) {
-                        if app.space_selected.contains(path) {
-                            app.space_selected.remove(path);
+    ui.add_space(S8);
+    let row_h = 26.0;
+    egui::ScrollArea::vertical()
+        .id_salt(kids.as_ptr() as usize)
+        .max_height((height - 88.0).max(120.0))
+        .show_rows(ui, row_h, kids.len(), |ui, range| {
+            for index in range {
+                let node = &kids[index];
+                let selected = selected_paths.contains(&node.path);
+                let response = ui
+                    .push_id(index, |ui| {
+                        let bg = ui.painter().add(Shape::Noop);
+                        let inner = ui.horizontal(|ui| {
+                            ui.set_min_width(ui.available_width());
+                            let (icon_rect, _) = ui.allocate_exact_size(Vec2::splat(18.0), Sense::hover());
+                            paint_ui_icon(
+                                ui.painter(),
+                                if node.is_directory { icons::UiIcon::Folder } else { icons::UiIcon::Info },
+                                icon_rect,
+                                WHITE,
+                            );
+                            ui.label(RichText::new(shorten(&file_name(&node.path), 22)).color(WHITE).size(SMALL));
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                ui.label(RichText::new(format_bytes(node.bytes)).color(WHITE).size(SMALL));
+                            });
+                        });
+                        let fill = if selected {
+                            with_alpha(WHITE, 48)
+                        } else if inner.response.hovered() {
+                            with_alpha(WHITE, 24)
                         } else {
-                            app.space_selected.insert(path.clone());
-                        }
-                    }
-                } else if tile.label.starts_with("Other") {
-                    app.space_other_expanded = true;
+                            Color32::TRANSPARENT
+                        };
+                        ui.painter().set(bg, Shape::rect_filled(inner.response.rect, r_sm(), fill));
+                        inner.response.interact(Sense::click())
+                    })
+                    .inner;
+                if response.hovered() {
+                    gesture.hover = Some(entity_bubble(node));
                 }
-                break;
+                if !busy && (response.double_clicked() || response.clicked()) && node.is_directory {
+                    gesture.open = Some(node.path.clone());
+                } else if !busy && response.clicked() && !node.is_directory && !is_spared(&node.path, home) {
+                    gesture.toggle = Some((node.path.clone(), node.bytes));
+                }
+                if response.secondary_clicked() {
+                    gesture.reveal = Some(node.path.clone());
+                }
             }
-        }
-    }
-    let _ = (folder_total, accent);
+        });
 }
 
-fn space_sticky_footer(
+struct OrbitBubble {
+    name: String,
+    bytes: u64,
+    path: Option<PathBuf>,
+    is_dir: bool,
+    share: f32,
+}
+
+fn space_orbit(
     ui: &mut egui::Ui,
-    app: &mut ScanApp,
-    kids: &[SpaceNode],
-    _folder_total: u64,
-    accent: Color32,
+    selected_paths: &HashSet<PathBuf>,
+    home: &Path,
+    nodes: &[SpaceNode],
+    other_bytes: u64,
+    total: u64,
+    height: f32,
     busy: bool,
+    gesture: &mut SpaceGesture,
 ) {
-    if app.volume_capacity_bytes == 0 {
-        app.refresh_volume_stats();
-    }
-    let used = app.volume_used;
-    let capacity = if app.volume_capacity_bytes > 0 {
-        app.volume_capacity_bytes
-    } else {
-        volume_capacity(&computer_root()).map(|(_, c)| c).unwrap_or(1)
-    };
-    let free = capacity.saturating_sub(used);
-    let fraction = if capacity == 0 { 0.0 } else { used as f32 / capacity as f32 };
-    let selected_bytes: u64 = app
-        .space_selected
+    let mut bubbles: Vec<OrbitBubble> = nodes
         .iter()
-        .filter_map(|p| kids.iter().find(|n| &n.path == p).map(|n| n.bytes))
-        .sum();
-    let removable: Vec<PathBuf> = app
-        .space_selected
-        .iter()
-        .filter(|path| !is_spared(path, &app.home) && !is_protected(path, &app.home))
-        .cloned()
+        .map(|node| OrbitBubble {
+            name: file_name(&node.path),
+            bytes: node.bytes,
+            path: Some(node.path.clone()),
+            is_dir: node.is_directory,
+            share: node.bytes as f32 / total.max(1) as f32,
+        })
         .collect();
-    components::surface_frame().show(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.label(
-                    RichText::new(format!(
-                        "{} of {} used · {} free",
-                        format_bytes(used),
-                        format_bytes(capacity),
-                        format_bytes(free)
-                    ))
+    if other_bytes > 0 {
+        bubbles.push(OrbitBubble {
+            name: "Other".into(),
+            bytes: other_bytes,
+            path: None,
+            is_dir: false,
+            share: other_bytes as f32 / total.max(1) as f32,
+        });
+    }
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
+    let shares: Vec<f32> = bubbles.iter().map(|bubble| bubble.share).collect();
+    let placed = orbit_layout(rect, &shares);
+    let painter = ui.painter();
+    for (bubble, (center, radius)) in bubbles.iter().zip(placed.iter()) {
+        let selected = bubble.path.as_ref().is_some_and(|path| selected_paths.contains(path));
+        painter.circle_filled(*center, *radius, with_alpha(WHITE, if selected { 70 } else { 36 }));
+        painter.circle_stroke(*center, *radius, Stroke::new(1.5, with_alpha(WHITE, 140)));
+        if *radius > 36.0 {
+            painter.text(*center + v2(0.0, -8.0), Align2::CENTER_CENTER, shorten(&bubble.name, 14), font_semi(SMALL), WHITE);
+            painter.text(
+                *center + v2(0.0, 12.0),
+                Align2::CENTER_CENTER,
+                format_bytes(bubble.bytes),
+                font_regular(CAPTION),
+                with_alpha(WHITE, 210),
+            );
+        }
+    }
+    let pointer = response.hover_pos();
+    if let Some(pos) = pointer {
+        if let Some((index, _)) = hit_bubble(pos, &placed) {
+            if let Some(node) = nodes.get(index) {
+                gesture.hover = Some(node.clone());
+            }
+        }
+    }
+    if !busy {
+        let pos = response.interact_pointer_pos().or(pointer);
+        if let Some(pos) = pos {
+            if let Some((index, _)) = hit_bubble(pos, &placed) {
+                let bubble = &bubbles[index];
+                if response.double_clicked() || response.clicked() {
+                    if bubble.is_dir {
+                        if let Some(path) = bubble.path.clone() {
+                            gesture.open = Some(path);
+                        }
+                    } else if let Some(path) = &bubble.path {
+                        if !is_spared(path, home) {
+                            gesture.toggle = Some((path.clone(), bubble.bytes));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn orbit_layout(rect: Rect, shares: &[f32]) -> Vec<(egui::Pos2, f32)> {
+    if shares.is_empty() {
+        return Vec::new();
+    }
+    let center = rect.center();
+    let limit = rect.width().min(rect.height()) * 0.46;
+    let main = (limit * (0.42 + 0.22 * shares[0].sqrt())).clamp(64.0, limit * 0.46);
+    let mut placed = vec![(center, main)];
+    let rest = shares.len().saturating_sub(1);
+    for index in 0..rest {
+        let share = shares[index + 1];
+        let radius = (20.0 + 78.0 * share.sqrt()).clamp(18.0, main * 0.72);
+        let angle = -std::f32::consts::FRAC_PI_2 + index as f32 / rest as f32 * std::f32::consts::TAU;
+        let dist = main + radius + 14.0;
+        let raw = center + Vec2::new(angle.cos(), angle.sin()) * dist;
+        let min = rect.min + Vec2::splat(radius + 6.0);
+        let max = rect.max - Vec2::splat(radius + 6.0);
+        let pos = egui::pos2(raw.x.clamp(min.x, max.x.max(min.x)), raw.y.clamp(min.y, max.y.max(min.y)));
+        placed.push((pos, radius));
+    }
+    placed
+}
+
+fn hit_bubble(pos: egui::Pos2, placed: &[(egui::Pos2, f32)]) -> Option<(usize, f32)> {
+    let mut best: Option<(usize, f32)> = None;
+    for (index, (center, radius)) in placed.iter().enumerate() {
+        let distance = pos.distance(*center);
+        if distance <= *radius && best.map(|(_, previous)| distance < previous).unwrap_or(true) {
+            best = Some((index, distance));
+        }
+    }
+    best
+}
+
+fn space_footer(ui: &mut egui::Ui, app: &mut ScanApp, selected_bytes: u64, _folder_total: u64) {
+    ui.add_space(S8);
+    let (used, capacity) = volume_capacity(Path::new(app.space_root.trim())).unwrap_or_else(|| {
+        let used = selected_bytes;
+        (used, used.max(1))
+    });
+    let fraction = if capacity == 0 { 0.0 } else { used as f32 / capacity as f32 };
+    ui.horizontal(|ui| {
+        ui.vertical(|ui| {
+            ui.set_min_width(220.0);
+            ui.label(
+                RichText::new(format!("{} of {} used", format_bytes(used), format_bytes(capacity)))
                     .size(SMALL)
                     .color(WHITE),
-                );
-                thick_meter(ui, fraction, 220.0);
-            });
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.spacing_mut().item_spacing.x = S12;
-                if primary_accent(
-                    ui,
-                    "Review and move to Trash",
-                    !busy && !removable.is_empty(),
-                    accent,
-                )
-                .clicked()
-                {
-                    let mut lines: Vec<String> = removable
-                        .iter()
-                        .take(8)
-                        .map(|p| format!("• {}", file_name(p)))
-                        .collect();
-                    if removable.len() > 8 {
-                        lines.push(format!("… and {} more", removable.len() - 8));
-                    }
-                    app.confirm = Some(Confirm {
-                        heading: format!("Move {} items to the Trash?", removable.len()),
-                        body: format!(
-                            "{}\n\nTotal size about {}. Items go to the Trash only — nothing is permanently deleted.",
-                            lines.join("\n"),
-                            format_bytes(selected_bytes)
-                        ),
-                        action: "Move to Trash",
-                        kind: ConfirmKind::TrashSpace(removable),
-                    });
-                }
-                ui.label(
-                    RichText::new(format!(
-                        "{} selected · {}",
-                        app.space_selected.len(),
+            );
+            meter(ui, fraction, WHITE);
+        });
+        let selected_bytes = selected_bytes;
+        ui.label(
+            RichText::new(format!(
+                "{} items selected   {}",
+                app.space_selected.len(),
+                format_bytes(selected_bytes)
+            ))
+            .size(SMALL)
+            .color(with_alpha(WHITE, 210)),
+        );
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            let removable: Vec<PathBuf> = app
+                .space_selected
+                .iter()
+                .filter(|path| !is_spared(path, &app.home))
+                .cloned()
+                .collect();
+            let accent = accent_for_screen(Screen::Space);
+            if primary_accent(ui, "Review and Remove", !app.busy && !removable.is_empty(), accent).clicked() {
+                app.confirm = Some(Confirm {
+                    heading: "Move selected files to the Trash?".into(),
+                    body: format!(
+                        "This frees about {}. System files stay protected. You can restore items from the Trash.",
                         format_bytes(selected_bytes)
-                    ))
-                    .monospace()
-                    .size(SMALL)
-                    .color(TEXT_SECONDARY),
-                );
-            });
+                    ),
+                    action: "Move to Trash",
+                    kind: ConfirmKind::TrashSpace(removable),
+                });
+            }
         });
     });
 }
@@ -3930,12 +3878,21 @@ fn open_url(url: &str) {
     let _ = Command::new("open").arg(url).spawn();
 }
 
+fn normalize_space_path(path: &str) -> String {
+    let trimmed = path.trim();
+    let candidate = PathBuf::from(trimmed);
+    std::fs::canonicalize(&candidate)
+        .map(|resolved| resolved.display().to_string())
+        .unwrap_or_else(|_| trimmed.to_string())
+}
+
 fn volume_title(path: &str) -> String {
-    let path = Path::new(path);
-    if path == computer_root() {
+    let place = path_place(path);
+    let mac = path_place(&computer_root().display().to_string());
+    if place == mac || place == "/" {
         "Macintosh HD".into()
     } else {
-        file_name(path)
+        file_name(Path::new(path))
     }
 }
 

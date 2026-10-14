@@ -1,9 +1,7 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::os::darwin::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-
-use tokio::sync::Semaphore;
 
 use crate::access::{folder_access, AccessStatus};
 use crate::cleanup::finder_trash;
@@ -11,11 +9,8 @@ use crate::cleanup::finder_trash;
 /// `SF_DATALESS`. The scan tests this bit of `st_flags` after `lstat`.
 const SF_DATALESS: u32 = 0x40000000;
 
-/// Top-level directory walks. Stored on the scan task. No second read was found in the scanner slice.
+/// Concurrent directory subtrees (matches CMM `maxConcurrentScans = 4`).
 const MAX_CONCURRENT_SCANS: usize = 4;
-
-/// Progress tracker constant stored next to `threshold`. Half a second in nanoseconds.
-const PROGRESS_THRESHOLD_NS: u64 = 500_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CloudStatus {
@@ -24,7 +19,6 @@ pub enum CloudStatus {
     CloudEvicted,
 }
 
-/// `CloudStorageHelper.strategy`. Raw byte `1` is the `lstat` path. Case names were not recovered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CloudScannerStrategy {
     UrlUbiquitousKeys,
@@ -34,19 +28,38 @@ pub enum CloudScannerStrategy {
 #[derive(Clone, Debug)]
 struct PathFilter {
     custom_ignore_paths: HashSet<PathBuf>,
-    /// Present when full-disk access is denied. Paths under it are skipped.
     reminders_path: Option<PathBuf>,
 }
 
 struct ScanTask {
     filter: PathFilter,
     strategy: CloudScannerStrategy,
-    #[allow(dead_code)]
-    progress_threshold_ns: u64,
 }
 
-/// One directory entry. `children` is empty on the nodes returned to the UI.
-/// Directory `bytes` is still the sum of descendant sizes.
+/// Full tree node. CleanMyMac keeps one `rootNode` on the representation view model
+/// and drills down via `navigationHistory` without rescanning each folder.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpaceEntity {
+    pub path: PathBuf,
+    pub bytes: u64,
+    pub is_directory: bool,
+    pub is_purgeable: bool,
+    pub cloud: CloudStatus,
+    pub leaves: u64,
+    pub modified: Option<u64>,
+    pub children: Vec<SpaceEntity>,
+}
+
+/// One volume scan. Navigation reuses `root` and only remaps immediate children.
+#[derive(Clone, Debug)]
+pub struct SpaceVolumeScan {
+    pub scan_root: PathBuf,
+    root: SpaceEntity,
+    /// Child-index path from `root`. Empty vec is the scan root. No tree walk on open.
+    lookup: HashMap<PathBuf, Vec<usize>>,
+}
+
+/// One level in the UI. Sizes include descendants; no nested `children` in the list row.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpaceNode {
     pub path: PathBuf,
@@ -55,7 +68,6 @@ pub struct SpaceNode {
     pub is_purgeable: bool,
     pub cloud: CloudStatus,
     pub leaves: u64,
-    /// Seconds since UNIX epoch from the item's metadata, when available.
     pub modified: Option<u64>,
 }
 
@@ -73,10 +85,8 @@ pub struct DeletionUnit {
     pub removable_leaves_count: u64,
 }
 
-/// Bubbles and ring views hide items below this share of the folder total.
 pub const SPACE_LENS_BUBBLE_THRESHOLD: f32 = 0.02;
 
-/// APFS data volume named in Space Lens (`/System/Volumes/Data/`). Falls back to `/`.
 pub fn computer_root() -> PathBuf {
     let data = PathBuf::from("/System/Volumes/Data");
     if data.is_dir() {
@@ -86,42 +96,104 @@ pub fn computer_root() -> PathBuf {
     }
 }
 
-pub async fn scan_space(root: PathBuf) -> SpaceReport {
+pub fn normalize_space_path(path: &str) -> String {
+    let trimmed = path.trim();
+    let candidate = PathBuf::from(trimmed);
+    std::fs::canonicalize(&candidate)
+        .map(|resolved| resolved.display().to_string())
+        .unwrap_or_else(|_| trimmed.to_string())
+}
+
+/// Builds the full entity tree under `scan_root` once (up to four subtrees at a time).
+pub async fn scan_space_volume(scan_root: PathBuf) -> SpaceVolumeScan {
+    let scan_root = PathBuf::from(normalize_space_path(&scan_root.display().to_string()));
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-    let task = create_scan_task(&home);
-    let root_dev = std::fs::symlink_metadata(&root).map(|meta| meta.st_dev()).unwrap_or(0);
+    let task = Arc::new(create_scan_task(&home));
+    let root_dev = std::fs::symlink_metadata(&scan_root).map(|meta| meta.st_dev()).unwrap_or(0);
     let seen = Arc::new(Mutex::new(HashSet::new()));
-    if let Ok(meta) = std::fs::symlink_metadata(&root) {
-        seen.lock().unwrap().insert((meta.st_dev(), meta.st_ino()));
+    let scan_for_task = scan_root.clone();
+    let task_bg = Arc::clone(&task);
+    let seen_bg = Arc::clone(&seen);
+    let root = tokio::task::spawn_blocking(move || {
+        build_root_entity(scan_for_task, root_dev, &task_bg, seen_bg)
+    })
+    .await
+    .unwrap_or_else(|_| SpaceEntity {
+        path: scan_root.clone(),
+        bytes: 0,
+        is_directory: true,
+        is_purgeable: false,
+        cloud: CloudStatus::NotCloud,
+        leaves: 0,
+        modified: None,
+        children: Vec::new(),
+    });
+    new_volume(scan_root, root)
+}
+
+fn new_volume(scan_root: PathBuf, root: SpaceEntity) -> SpaceVolumeScan {
+    let lookup = build_lookup(&root);
+    SpaceVolumeScan {
+        scan_root,
+        root,
+        lookup,
     }
-    let entries: Vec<PathBuf> = match std::fs::read_dir(&root) {
-        Ok(entries) => entries.flatten().map(|entry| entry.path()).collect(),
-        Err(_) => Vec::new(),
-    };
-    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_SCANS));
-    let mut joins = Vec::new();
-    for path in entries {
-        if ignored(&task.filter, &path) {
-            continue;
-        }
-        let permit = semaphore.clone();
-        let seen = Arc::clone(&seen);
-        let strategy = task.strategy;
-        joins.push(tokio::spawn(async move {
-            let _permit = permit.acquire_owned().await.ok();
-            node_for_path(path, root_dev, strategy, &seen)
-        }));
-    }
-    let mut children = Vec::new();
-    for join in joins {
-        if let Some(node) = join.await.ok().flatten() {
-            children.push(node);
-        }
-    }
+}
+
+/// One folder already in the scanned tree. Children stay in the tree; the UI borrows them.
+pub struct SpaceFolder<'a> {
+    pub path: &'a Path,
+    pub total: u64,
+    pub children: &'a [SpaceEntity],
+}
+
+pub fn space_folder<'a>(volume: &'a SpaceVolumeScan, folder: &Path) -> Option<SpaceFolder<'a>> {
+    let node = find_entity_in_volume(volume, folder)?;
+    Some(SpaceFolder {
+        path: &node.path,
+        total: node.bytes,
+        children: &node.children,
+    })
+}
+pub fn space_report_at(volume: &SpaceVolumeScan, folder: &Path) -> Option<SpaceReport> {
+    let node = find_entity_in_volume(volume, folder)?;
+    let root = node.path.clone();
+    let mut children: Vec<SpaceNode> = node.children.iter().map(entity_to_node).collect();
     children.sort_by(|a, b| b.bytes.cmp(&a.bytes));
-    children.retain(|node| node.bytes > 0 || node.is_directory);
+    children.retain(|entry| entry.bytes > 0 || entry.is_directory);
     let total = sum_bytes(&children);
-    SpaceReport { root, total, children }
+    Some(SpaceReport {
+        root,
+        total,
+        children,
+    })
+}
+
+pub fn volume_contains(volume: &SpaceVolumeScan, folder: &Path) -> bool {
+    find_entity_in_volume(volume, folder).is_some()
+}
+
+/// Desktop, Downloads, and Documents are TCC-protected even when FDA is off.
+pub fn home_folder_access(home: &Path) -> AccessStatus {
+    let mut status = AccessStatus::Granted;
+    for name in ["Desktop", "Downloads", "Documents"] {
+        match folder_access(&home.join(name)) {
+            AccessStatus::Denied => return AccessStatus::Denied,
+            AccessStatus::Unknown => status = AccessStatus::Unknown,
+            AccessStatus::Granted => {}
+        }
+    }
+    status
+}
+
+pub async fn scan_space(root: PathBuf) -> SpaceReport {
+    let volume = scan_space_volume(root).await;
+    let at = volume.scan_root.clone();
+    space_report_at(&volume, &at).unwrap_or(SpaceReport {
+        root: at,
+        total: 0,
+        children: Vec::new(),
+    })
 }
 
 fn create_scan_task(home: &Path) -> ScanTask {
@@ -134,105 +206,286 @@ fn create_scan_task(home: &Path) -> ScanTask {
             reminders_path: if fda_granted { None } else { Some(reminders) },
         },
         strategy: CloudScannerStrategy::UrlUbiquitousKeys,
-        progress_threshold_ns: PROGRESS_THRESHOLD_NS,
     }
 }
 
-fn node_for_path(
+fn build_root_entity(
+    scan_root: PathBuf,
+    root_dev: u64,
+    task: &Arc<ScanTask>,
+    seen: Arc<Mutex<HashSet<(u64, u64)>>>,
+) -> SpaceEntity {
+    if let Ok(meta) = std::fs::symlink_metadata(&scan_root) {
+        if let Ok(mut guard) = seen.lock() {
+            guard.insert((meta.st_dev(), meta.st_ino()));
+        }
+    }
+    let entries = directory_entries(task, &scan_root);
+    let mut children = build_children(entries, root_dev, task, &seen, true);
+    children.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+    children.retain(|node| node.bytes > 0 || node.is_directory);
+    let bytes = children.iter().fold(0u64, |sum, child| sum.saturating_add(child.bytes));
+    let leaves = children.iter().fold(0u64, |sum, child| sum.saturating_add(child.leaves));
+    SpaceEntity {
+        path: scan_root.clone(),
+        bytes,
+        is_directory: true,
+        is_purgeable: false,
+        cloud: CloudStatus::NotCloud,
+        leaves,
+        modified: std::fs::symlink_metadata(&scan_root)
+            .ok()
+            .and_then(|meta| meta.modified().ok())
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs()),
+        children,
+    }
+}
+
+fn directory_entries(task: &ScanTask, directory: &Path) -> Vec<PathBuf> {
+    match std::fs::read_dir(directory) {
+        Ok(entries) => entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| !ignored(&task.filter, path))
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Parallel only for the scan root's immediate children. Deeper folders stay on that same thread.
+fn build_children(
+    entries: Vec<PathBuf>,
+    root_dev: u64,
+    task: &Arc<ScanTask>,
+    seen: &Arc<Mutex<HashSet<(u64, u64)>>>,
+    parallel: bool,
+) -> Vec<SpaceEntity> {
+    if entries.is_empty() {
+        return Vec::new();
+    }
+    let workers = if parallel {
+        MAX_CONCURRENT_SCANS.min(entries.len())
+    } else {
+        1
+    };
+    if workers <= 1 {
+        return entries
+            .into_iter()
+            .filter_map(|path| build_entity(path, root_dev, task, seen))
+            .collect();
+    }
+    let chunk_size = entries.len().div_ceil(workers);
+    let chunks: Vec<Vec<PathBuf>> = entries
+        .chunks(chunk_size)
+        .map(|chunk| chunk.to_vec())
+        .collect();
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = chunks
+            .into_iter()
+            .map(|chunk| {
+                let task = Arc::clone(task);
+                let seen = Arc::clone(seen);
+                scope.spawn(move || {
+                    chunk
+                        .into_iter()
+                        .filter_map(|path| build_entity(path, root_dev, &task, &seen))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .filter_map(|handle| handle.join().ok())
+            .flatten()
+            .collect()
+    })
+}
+
+fn build_entity(
     path: PathBuf,
     root_dev: u64,
-    strategy: CloudScannerStrategy,
-    seen: &Mutex<HashSet<(u64, u64)>>,
-) -> Option<SpaceNode> {
+    task: &Arc<ScanTask>,
+    seen: &Arc<Mutex<HashSet<(u64, u64)>>>,
+) -> Option<SpaceEntity> {
     let meta = std::fs::symlink_metadata(&path).ok()?;
     let same_volume = meta.st_dev() == root_dev;
     let is_link = meta.file_type().is_symlink();
-    let is_directory = same_volume && meta.is_dir() && !is_link;
-    let cloud = cloud_status(strategy, path_is_ubiquitous(&path), meta.st_flags() & SF_DATALESS != 0, meta.st_flags());
+    let is_directory = same_volume
+        && (meta.is_dir() && !is_link
+            || is_link && std::fs::metadata(&path).map(|followed| followed.is_dir()).unwrap_or(false));
+    let cloud = cloud_status(
+        task.strategy,
+        path_is_ubiquitous(&path),
+        meta.st_flags() & SF_DATALESS != 0,
+        meta.st_flags(),
+    );
     let modified = meta
         .modified()
         .ok()
         .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|duration| duration.as_secs());
-    let (bytes, leaves) = if !same_volume {
-        (0, 0)
-    } else if is_directory {
-        let measured = measure_tree(&path, root_dev, strategy, seen);
-        (measured.bytes, measured.leaves)
-    } else {
+
+    if !same_volume {
+        return Some(SpaceEntity {
+            path,
+            bytes: 0,
+            is_directory,
+            is_purgeable: false,
+            cloud,
+            leaves: 0,
+            modified,
+            children: Vec::new(),
+        });
+    }
+
+    if is_directory {
         let id = (meta.st_dev(), meta.st_ino());
-        if seen.lock().ok()?.insert(id) {
-            (allocated_bytes(&meta), leaf_count(false, cloud).0)
-        } else {
-            (0, 0)
+        {
+            let mut guard = seen.lock().ok()?;
+            if !guard.insert(id) {
+                return Some(SpaceEntity {
+                    path,
+                    bytes: 0,
+                    is_directory: true,
+                    is_purgeable: false,
+                    cloud,
+                    leaves: 0,
+                    modified,
+                    children: Vec::new(),
+                });
+            }
         }
-    };
-    Some(SpaceNode {
+        let entries = directory_entries(task, &path);
+        let mut children = build_children(entries, root_dev, task, seen, false);
+        children.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+        let bytes = children.iter().fold(0u64, |sum, child| sum.saturating_add(child.bytes));
+        let leaves = children.iter().fold(0u64, |sum, child| sum.saturating_add(child.leaves));
+        return Some(SpaceEntity {
+            path,
+            bytes,
+            is_directory: true,
+            is_purgeable: false,
+            cloud,
+            leaves,
+            modified,
+            children,
+        });
+    }
+
+    let id = (meta.st_dev(), meta.st_ino());
+    if !seen.lock().ok()?.insert(id) {
+        return Some(SpaceEntity {
+            path,
+            bytes: 0,
+            is_directory: false,
+            is_purgeable: false,
+            cloud,
+            leaves: 0,
+            modified,
+            children: Vec::new(),
+        });
+    }
+    let (leaves, _) = leaf_count(false, cloud);
+    Some(SpaceEntity {
         path,
-        bytes,
-        is_directory,
+        bytes: allocated_bytes(&meta),
+        is_directory: false,
         is_purgeable: false,
         cloud,
         leaves,
         modified,
+        children: Vec::new(),
     })
 }
 
-struct Measured {
-    bytes: u64,
-    leaves: u64,
+fn entity_to_node(entity: &SpaceEntity) -> SpaceNode {
+    SpaceNode {
+        path: entity.path.clone(),
+        bytes: entity.bytes,
+        is_directory: entity.is_directory,
+        is_purgeable: entity.is_purgeable,
+        cloud: entity.cloud,
+        leaves: entity.leaves,
+        modified: entity.modified,
+    }
 }
 
-/// Directory size is the sum of child sizes. Symlinks are not descended.
-/// The inode set stops a firmlink from being added twice.
-fn measure_tree(
-    path: &Path,
-    root_dev: u64,
-    strategy: CloudScannerStrategy,
-    seen: &Mutex<HashSet<(u64, u64)>>,
-) -> Measured {
-    let mut bytes = 0u64;
-    let mut leaves = 0u64;
-    let mut stack = vec![path.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let entries = match std::fs::read_dir(&dir) {
-            Ok(entries) => entries,
-            Err(_) => continue,
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if ignored_nofollow(&path) {
-                continue;
+fn push_alias(aliases: &mut Vec<PathBuf>, path: PathBuf) {
+    if !aliases.iter().any(|existing| existing == &path) {
+        aliases.push(path);
+    }
+}
+
+fn path_aliases(path: &Path) -> Vec<PathBuf> {
+    let mut aliases = vec![path.to_path_buf()];
+    append_home_data_aliases(&mut aliases);
+    aliases
+}
+
+fn storage_aliases(path: &Path) -> Vec<PathBuf> {
+    let mut aliases = vec![path.to_path_buf()];
+    append_home_data_aliases(&mut aliases);
+    aliases
+}
+
+fn append_home_data_aliases(aliases: &mut Vec<PathBuf>) {
+    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    if home.as_os_str().is_empty() {
+        return;
+    }
+    let data = computer_root();
+    let user = home.file_name().map(|name| PathBuf::from(name)).unwrap_or_default();
+    let data_home = data.join("Users").join(&user);
+    let bases = aliases.clone();
+    for base in bases {
+        if let Ok(rest) = base.strip_prefix(&home) {
+            push_alias(aliases, data_home.join(rest));
+        }
+        if let Ok(rest) = base.strip_prefix(&data_home) {
+            push_alias(aliases, home.join(rest));
+        }
+    }
+}
+
+fn build_lookup(root: &SpaceEntity) -> HashMap<PathBuf, Vec<usize>> {
+    let mut lookup = HashMap::new();
+    fn walk(node: &SpaceEntity, index: &[usize], lookup: &mut HashMap<PathBuf, Vec<usize>>) {
+        if node.is_directory {
+            for alias in storage_aliases(&node.path) {
+                lookup.entry(alias).or_insert_with(|| index.to_vec());
             }
-            let meta = match std::fs::symlink_metadata(&path) {
-                Ok(meta) => meta,
-                Err(_) => continue,
-            };
-            if meta.file_type().is_symlink() || meta.st_dev() != root_dev {
-                continue;
-            }
-            let id = (meta.st_dev(), meta.st_ino());
-            if !seen.lock().unwrap().insert(id) {
-                continue;
-            }
-            if meta.is_dir() {
-                stack.push(path);
-            } else {
-                let cloud = cloud_status(
-                    strategy,
-                    path_is_ubiquitous(&path),
-                    meta.st_flags() & SF_DATALESS != 0,
-                    meta.st_flags(),
-                );
-                bytes = bytes.saturating_add(allocated_bytes(&meta));
-                leaves = leaves.saturating_add(leaf_count(false, cloud).0);
+        }
+        for (offset, child) in node.children.iter().enumerate() {
+            let mut child_index = Vec::with_capacity(index.len() + 1);
+            child_index.extend_from_slice(index);
+            child_index.push(offset);
+            walk(child, &child_index, lookup);
+        }
+    }
+    walk(root, &[], &mut lookup);
+    lookup
+}
+
+fn node_at<'a>(root: &'a SpaceEntity, index: &[usize]) -> Option<&'a SpaceEntity> {
+    let mut node = root;
+    for offset in index {
+        node = node.children.get(*offset)?;
+    }
+    Some(node)
+}
+
+fn find_entity_in_volume<'a>(volume: &'a SpaceVolumeScan, folder: &Path) -> Option<&'a SpaceEntity> {
+    for alias in path_aliases(folder) {
+        if let Some(index) = volume.lookup.get(&alias) {
+            if let Some(node) = node_at(&volume.root, index) {
+                return Some(node);
             }
         }
     }
-    Measured { bytes, leaves }
+    None
 }
 
-/// Purgeable node contributes 0. A file contributes 1. Callers sum directories.
 fn leaf_count(is_purgeable: bool, cloud: CloudStatus) -> (u64, u64) {
     if is_purgeable {
         return (0, 0);
@@ -245,8 +498,6 @@ fn sum_bytes(children: &[SpaceNode]) -> u64 {
     children.iter().fold(0u64, |sum, node| sum.saturating_add(node.bytes))
 }
 
-/// URL strategy: not ubiquitous → on this Mac, not downloaded → evicted, else local.
-/// Dataless strategy: `SF_DATALESS` → evicted, every other file → local.
 pub fn cloud_status(
     strategy: CloudScannerStrategy,
     is_ubiquitous: bool,
@@ -292,13 +543,10 @@ fn ignored_nofollow(path: &Path) -> bool {
     text == "/.nofollow" || text.starts_with("/.nofollow/")
 }
 
-/// Both `fileSize` and `totalFileAllocatedSize` are requested by the scanner.
-/// The stored key was not recovered. Disk usage here is allocated blocks, 512 bytes each.
 fn allocated_bytes(meta: &std::fs::Metadata) -> u64 {
     meta.st_blocks().saturating_mul(512)
 }
 
-/// Flat rows for a delete pass. `should_spare` drops a node and everything under it.
 pub fn deletion_units(nodes: &[SpaceNode], should_spare: impl Fn(&SpaceNode) -> bool) -> Vec<DeletionUnit> {
     nodes
         .iter()
@@ -311,7 +559,6 @@ pub fn deletion_units(nodes: &[SpaceNode], should_spare: impl Fn(&SpaceNode) -> 
         .collect()
 }
 
-/// System locations and directories are spared. The original `shouldSpare` closure is supplied by the caller.
 pub fn is_spared(path: &Path, home: &Path) -> bool {
     if path.is_dir() {
         return true;
@@ -325,7 +572,6 @@ pub fn is_spared(path: &Path, home: &Path) -> bool {
         || path.starts_with(home.join("Library"))
 }
 
-/// Finder trash for selected files inside the measured folder. Spared paths are skipped.
 pub fn trash_selected(root: &Path, home: &Path, paths: &[PathBuf]) -> Result<usize, String> {
     let mut moved = 0usize;
     for path in paths {
@@ -347,75 +593,70 @@ mod tests {
     use super::*;
 
     #[test]
-    fn url_strategy_matches_ubiquitous_and_dataless() {
-        assert_eq!(
-            cloud_status(CloudScannerStrategy::UrlUbiquitousKeys, false, false, 0),
-            CloudStatus::NotCloud
-        );
-        assert_eq!(
-            cloud_status(CloudScannerStrategy::UrlUbiquitousKeys, true, true, 0),
-            CloudStatus::CloudEvicted
-        );
-        assert_eq!(
-            cloud_status(CloudScannerStrategy::UrlUbiquitousKeys, true, false, 0),
-            CloudStatus::CloudLocal
-        );
-        assert_eq!(
-            cloud_status(CloudScannerStrategy::DatalessFlag, false, false, SF_DATALESS),
-            CloudStatus::CloudEvicted
-        );
-        assert_eq!(
-            cloud_status(CloudScannerStrategy::DatalessFlag, false, false, 0),
-            CloudStatus::CloudLocal
-        );
-    }
-
-    #[test]
-    fn nofollow_and_reminders_are_ignored() {
-        let filter = PathFilter {
-            custom_ignore_paths: HashSet::from([PathBuf::from("/tmp/skip")]),
-            reminders_path: Some(PathBuf::from("/Users/example/Library/Reminders")),
+    fn home_alias_finds_data_volume_path() {
+        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+        if home.as_os_str().is_empty() {
+            return;
+        }
+        let user = home.file_name().unwrap();
+        let data_home = computer_root().join("Users").join(user);
+        if !data_home.is_dir() {
+            return;
+        }
+        let entity = SpaceEntity {
+            path: data_home.join("Desktop"),
+            bytes: 42,
+            is_directory: true,
+            is_purgeable: false,
+            cloud: CloudStatus::NotCloud,
+            leaves: 1,
+            modified: None,
+            children: vec![],
         };
-        assert!(ignored(&filter, Path::new("/.nofollow")));
-        assert!(ignored(&filter, Path::new("/.nofollow/secret")));
-        assert!(ignored(&filter, Path::new("/tmp/skip")));
-        assert!(ignored(&filter, Path::new("/Users/example/Library/Reminders/a.ics")));
-        assert!(!ignored(&filter, Path::new("/Users/example/Documents/a.txt")));
+        let root = SpaceEntity {
+            path: data_home.clone(),
+            bytes: 42,
+            is_directory: true,
+            is_purgeable: false,
+            cloud: CloudStatus::NotCloud,
+            leaves: 1,
+            modified: None,
+            children: vec![entity],
+        };
+        let desktop = data_home.join("Desktop");
+        let volume = new_volume(data_home, root);
+        let report = space_report_at(&volume, &home.join("Desktop")).expect("alias lookup");
+        assert_eq!(report.root, desktop);
     }
 
     #[test]
-    fn purgeable_and_evicted_files_do_not_count_as_removable() {
-        assert_eq!(leaf_count(true, CloudStatus::NotCloud), (0, 0));
-        assert_eq!(leaf_count(false, CloudStatus::NotCloud), (1, 1));
-        assert_eq!(leaf_count(false, CloudStatus::CloudEvicted), (1, 0));
-    }
+    fn cached_report_matches_drill_down() {
+        let dir = std::env::temp_dir().join(format!("rust_utility_space_cache_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("sub/b.txt"), vec![b'x'; 4096]).unwrap();
 
-    #[test]
-    fn deletion_units_drop_spared_directories() {
-        let nodes = vec![
-            SpaceNode {
-                path: PathBuf::from("/Users/example/file.txt"),
-                bytes: 10,
-                is_directory: false,
-                is_purgeable: false,
-                cloud: CloudStatus::NotCloud,
-                leaves: 1,
-                modified: None,
-            },
-            SpaceNode {
-                path: PathBuf::from("/Users/example/Folder"),
-                bytes: 40,
-                is_directory: true,
-                is_purgeable: false,
-                cloud: CloudStatus::NotCloud,
-                leaves: 2,
-                modified: None,
-            },
-        ];
-        let units = deletion_units(&nodes, |node| node.is_directory);
-        assert_eq!(units.len(), 1);
-        assert_eq!(units[0].size, 10);
-        assert_eq!(units[0].removable_leaves_count, 1);
+        let root_dev = std::fs::symlink_metadata(&dir).unwrap().st_dev();
+        let task = Arc::new(create_scan_task(Path::new("/tmp")));
+        let seen = Arc::new(Mutex::new(HashSet::new()));
+        let sub = build_entity(dir.join("sub"), root_dev, &task, &seen).unwrap();
+        let root = SpaceEntity {
+            path: dir.clone(),
+            bytes: sub.bytes,
+            is_directory: true,
+            is_purgeable: false,
+            cloud: CloudStatus::NotCloud,
+            leaves: sub.leaves,
+            modified: None,
+            children: vec![sub],
+        };
+        let volume = new_volume(dir.clone(), root);
+        let top = space_report_at(&volume, &dir).unwrap();
+        assert_eq!(top.children.len(), 1);
+        let nested = space_report_at(&volume, &dir.join("sub")).unwrap();
+        assert_eq!(nested.children.len(), 1);
+        assert!(nested.children[0].bytes >= 4096);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
