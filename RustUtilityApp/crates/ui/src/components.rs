@@ -28,29 +28,13 @@ pub fn paint_app_background(painter: &egui::Painter, rect: Rect) {
     if rect.width() <= 0.0 || rect.height() <= 0.0 {
         return;
     }
-    let mut mesh = egui::Mesh::default();
-    mesh.colored_vertex(rect.left_top(), GRAD_PURPLE_TOP);
-    mesh.colored_vertex(rect.right_top(), GRAD_PURPLE_TOP);
-    mesh.colored_vertex(rect.right_bottom(), GRAD_PURPLE_BOTTOM);
-    mesh.colored_vertex(rect.left_bottom(), GRAD_PURPLE_BOTTOM);
-    mesh.add_triangle(0, 1, 2);
-    mesh.add_triangle(0, 2, 3);
-    painter.add(egui::Shape::mesh(mesh));
+    painter.rect_filled(rect, 0.0, Color32::BLACK);
+    let panel = rect.shrink(S8);
+    painter.rect_filled(panel, r_sm(), BG);
 }
 
-pub fn accent_for_screen(screen: crate::Screen) -> Color32 {
-    use crate::Screen;
-    match screen {
-        Screen::Care | Screen::Space => GRAD_PURPLE_ACCENT,
-        Screen::Cleanup => GRAD_GREEN_ACCENT,
-        Screen::Apps => GRAD_BLUE_ACCENT,
-        Screen::Performance => GRAD_ORANGE_ACCENT,
-        Screen::Clutter => GRAD_TEAL_ACCENT,
-        Screen::Protection => GRAD_SLATE_ACCENT,
-        Screen::Malware => ACCENT_TEXT,
-        Screen::Cloud => GRAD_SKY_ACCENT,
-        Screen::Assistant => GRAD_INDIGO_ACCENT,
-    }
+pub fn accent_for_screen(_screen: crate::Screen) -> Color32 {
+    ACCENT
 }
 
 #[derive(Clone, Copy)]
@@ -198,7 +182,7 @@ fn button_colors(kind: BtnKind, enabled: bool, hot: bool, pressed: bool, accent:
     }
     match kind {
         BtnKind::Primary => {
-            let fill = if pressed { BTN_PRESSED } else if hot { BTN_HOVER } else { WHITE };
+            let fill = if pressed { BTN_PRESSED } else if hot { BTN_HOVER } else { ACCENT };
             (fill, no_stroke(), INK)
         }
         BtnKind::Secondary => {
@@ -242,7 +226,7 @@ pub fn chip(ui: &mut Ui, salt: &str, label: &str, active: bool, accent: Color32)
     let (rect, response) = ui.allocate_exact_size(Vec2::new(w, CHIP_H), Sense::click());
     let hot = response.hovered() || response.is_pointer_button_down_on();
     let (fill, border, fg) = if active {
-        (WHITE, if response.has_focus() { focus_stroke() } else { no_stroke() }, INK)
+        (ACCENT, if response.has_focus() { focus_stroke() } else { no_stroke() }, INK)
     } else if hot {
         (with_alpha(accent, 80), stroke(SURFACE_LINE), WHITE)
     } else {

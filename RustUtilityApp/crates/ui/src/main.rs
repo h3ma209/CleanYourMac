@@ -1334,7 +1334,7 @@ fn rail_groups() -> [(&'static str, &'static [Screen]); 4] {
 fn rail_brand(ui: &mut egui::Ui) {
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), S32), Sense::hover());
     let mark = Rect::from_min_size(rect.min + v2(S16, 0.0), Vec2::splat(S32));
-    paint_brand_mark(ui.painter(), mark, WHITE);
+    paint_brand_mark(ui.painter(), mark, ACCENT);
     ui.painter().text(
         mark.right_center() + v2(S8, 0.0),
         Align2::LEFT_CENTER,
@@ -3026,34 +3026,24 @@ fn space_screen(ui: &mut egui::Ui, app: &mut ScanApp) {
 }
 
 fn space_top_bar(ui: &mut egui::Ui, app: &mut ScanApp, accent: Color32) {
-    let title = volume_title(app.space_root.trim());
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::hover());
-    ui.painter().text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        if title.is_empty() { "Macintosh HD".into() } else { title },
-        font_semi(TITLE),
-        WHITE,
-    );
     let mut go_back = false;
     let mut go_forward = false;
-    ui.allocate_new_ui(
-        egui::UiBuilder::new().max_rect(Rect::from_min_size(rect.min, Vec2::new(200.0, 40.0))),
-        |ui| {
-        ui.horizontal(|ui| {
-            if ghost_accent(ui, "Back", !app.busy && !app.space_history.is_empty(), accent).clicked() {
-                go_back = true;
-            }
-            if ghost_accent(ui, "Forward", !app.busy && !app.space_future.is_empty(), accent).clicked() {
-                go_forward = true;
-            }
-        });
+    ui.horizontal(|ui| {
+        if ghost_accent(ui, "Back", !app.busy && !app.space_history.is_empty(), accent).clicked() {
+            go_back = true;
+        }
+        if ghost_accent(ui, "Forward", !app.busy && !app.space_future.is_empty(), accent).clicked() {
+            go_forward = true;
+        }
     });
     if go_back {
         app.space_back();
     }
     if go_forward {
         app.space_forward();
+    }
+    if let Some(path) = space_breadcrumb(ui, app) {
+        app.space_open(path);
     }
     let current = path_place(&app.space_root);
     let mac = path_place(&computer_root().display().to_string());
@@ -3068,6 +3058,87 @@ fn space_top_bar(ui: &mut egui::Ui, app: &mut ScanApp, accent: Color32) {
         }
     });
     ui.add_space(S8);
+}
+
+fn space_crumbs(app: &ScanApp) -> Vec<(String, PathBuf)> {
+    let here = PathBuf::from(app.space_root.trim());
+    let anchor = app
+        .space_volume
+        .as_ref()
+        .map(|volume| volume.scan_root.clone())
+        .unwrap_or_else(|| here.clone());
+    let anchor_place = path_place(&anchor.display().to_string());
+    let here_place = path_place(&here.display().to_string());
+    let home = path_place(&app.home.display().to_string());
+    let root_label = if anchor_place.is_empty() || anchor_place == "/" {
+        "Macintosh HD".to_string()
+    } else if anchor_place == home {
+        "Home".to_string()
+    } else {
+        file_name(&anchor)
+    };
+    let mut crumbs = vec![(root_label, anchor.clone())];
+    let relative = if anchor_place.is_empty() {
+        here_place.trim_start_matches('/')
+    } else if here_place == anchor_place {
+        ""
+    } else {
+        here_place
+            .strip_prefix(&format!("{anchor_place}/"))
+            .unwrap_or("")
+    };
+    let mut path = anchor;
+    for part in relative.split('/').filter(|part| !part.is_empty()) {
+        path = path.join(part);
+        crumbs.push((part.to_string(), path.clone()));
+    }
+    crumbs
+}
+
+fn space_breadcrumb(ui: &mut egui::Ui, app: &ScanApp) -> Option<PathBuf> {
+    let crumbs = space_crumbs(app);
+    let last = crumbs.len().saturating_sub(1);
+    let mut open = None;
+    ui.add_space(S8);
+    egui::ScrollArea::horizontal()
+        .id_salt("space_crumbs")
+        .max_height(28.0)
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = S4;
+                for (index, (label, path)) in crumbs.iter().enumerate() {
+                    if index > 0 {
+                        ui.label(RichText::new("/").size(SMALL).color(TEXT_3));
+                    }
+                    if index == last {
+                        ui.label(RichText::new(label).font(font_semi(SMALL)).color(WHITE));
+                        let track = ui.id().with("space_crumb_track");
+                        let key = app.space_root.trim().to_string();
+                        let moved = ui.ctx().data(|data| {
+                            data.get_temp::<String>(track).map(|prev| prev != key).unwrap_or(true)
+                        });
+                        if moved {
+                            ui.scroll_to_cursor(Some(Align::RIGHT));
+                            ui.ctx().data_mut(|data| data.insert_temp(track, key));
+                        }
+                    } else if crumb_link(ui, label).clicked() && !app.busy {
+                        open = Some(path.clone());
+                    }
+                }
+            });
+        });
+    open
+}
+
+fn crumb_link(ui: &mut egui::Ui, label: &str) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), font_regular(SMALL), ACCENT_TEXT);
+    let (rect, response) = ui.allocate_exact_size(galley.size() + v2(S4, S4), Sense::click());
+    let color = if response.hovered() { WHITE } else { ACCENT_TEXT };
+    ui.painter().text(rect.center(), Align2::CENTER_CENTER, label, font_regular(SMALL), color);
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    response
 }
 
 #[derive(Default)]

@@ -118,14 +118,24 @@ pub fn paint_screen_icon(painter: &egui::Painter, screen: Screen, rect: Rect, co
     paint_glyph(painter, glyph, rect, color, tokens::ICON_STROKE_SCREEN);
 }
 
-pub fn paint_brand_mark(painter: &egui::Painter, rect: Rect, color: Color32) {
-    paint_glyph(
-        painter,
-        Glyph::Bars,
-        rect,
-        color,
-        tokens::ICON_STROKE_SCREEN,
-    );
+pub fn paint_brand_mark(painter: &egui::Painter, rect: Rect, _color: Color32) {
+    let center = rect.center();
+    let radius = rect.width().min(rect.height()) * 0.46;
+    painter.circle_filled(center, radius, tokens::ACCENT);
+    let bar_w = (radius * 0.28).max(2.0);
+    let gap = radius * 0.22;
+    let heights = [0.42, 0.72, 0.54];
+    let total = bar_w * 3.0 + gap * 2.0;
+    let left = center.x - total * 0.5;
+    for (index, height) in heights.iter().enumerate() {
+        let h = radius * 1.15 * height;
+        let x = left + index as f32 * (bar_w + gap);
+        let bar = Rect::from_min_size(
+            pos2(x, center.y + radius * 0.42 - h),
+            Vec2::new(bar_w, h),
+        );
+        painter.rect_filled(bar, tokens::r_pill(), tokens::INK);
+    }
 }
 
 pub fn heading_font(size: f32) -> FontId {

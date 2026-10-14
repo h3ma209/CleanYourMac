@@ -1,37 +1,35 @@
 #![allow(dead_code)]
-//! Opaque colors, the 7-size type ramp, the 4px spacing grid, and three radii.
-//! `TEXT_3` is `#82879F`, lightened from the requested `#7E839B` (4.29:1 on
-//! `SURFACE_RAISED`) so it clears 4.5:1. Measured 4.53:1.
+//! Spotify desktop palette: near-black surfaces, `#1ED760` green, white type.
+//! `TEXT_3` is `#A7A7A7` so small gray text stays above 4.5:1 on `#181818`.
 
 use eframe::egui::{Color32, FontFamily, FontId, Margin, Rounding, Stroke, Vec2};
 
-pub const BG: Color32 = Color32::from_rgb(0x0B, 0x0C, 0x12);
-pub const SURFACE: Color32 = Color32::from_rgb(0x15, 0x17, 0x26);
-pub const SURFACE_RAISED: Color32 = Color32::from_rgb(0x1D, 0x20, 0x33);
-pub const BORDER: Color32 = Color32::from_rgb(0x2A, 0x2E, 0x45);
-pub const TEXT: Color32 = Color32::from_rgb(0xF3, 0xF4, 0xF9);
-/// ~70% white on `SURFACE_CARD`. About 8:1.
-pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(0xD8, 0xD8, 0xE8);
-pub const PLACEHOLDER: Color32 = Color32::from_rgb(0xA8, 0xA8, 0xBC);
+pub const BG: Color32 = Color32::from_rgb(0x12, 0x12, 0x12);
+pub const SURFACE: Color32 = Color32::from_rgb(0x18, 0x18, 0x18);
+pub const SURFACE_RAISED: Color32 = Color32::from_rgb(0x28, 0x28, 0x28);
+pub const BORDER: Color32 = Color32::from_rgb(0x2A, 0x2A, 0x2A);
+pub const TEXT: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
+/// Spotify secondary gray. About 9:1 on `#121212`.
+pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(0xB3, 0xB3, 0xB3);
+pub const PLACEHOLDER: Color32 = Color32::from_rgb(0xA7, 0xA7, 0xA7);
 pub const TEXT_2: Color32 = TEXT_SECONDARY;
-/// Decorative or ≥20px only if left at the requested value. Lightened so small text also clears 4.5:1.
-pub const TEXT_3: Color32 = Color32::from_rgb(0x82, 0x87, 0x9F);
+pub const TEXT_3: Color32 = Color32::from_rgb(0xA7, 0xA7, 0xA7);
 pub const WHITE: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
 
-pub const ACCENT: Color32 = Color32::from_rgb(0x65, 0x56, 0xF0);
-/// 8 steps darker than `ACCENT` so hover does not lighten the fill. White contrast 5.64:1.
-pub const ACCENT_HOVER: Color32 = Color32::from_rgb(0x5D, 0x4E, 0xE8);
-pub const ACCENT_TEXT: Color32 = Color32::from_rgb(0x8B, 0x7F, 0xFF);
+/// In-app Spotify green. Black label contrast is well above 7:1.
+pub const ACCENT: Color32 = Color32::from_rgb(0x1E, 0xD7, 0x60);
+pub const ACCENT_HOVER: Color32 = Color32::from_rgb(0x3B, 0xE4, 0x77);
+pub const ACCENT_TEXT: Color32 = Color32::from_rgb(0x1E, 0xD7, 0x60);
 
-pub const SUCCESS: Color32 = Color32::from_rgb(0x3D, 0xDC, 0x97);
+pub const SUCCESS: Color32 = Color32::from_rgb(0x1E, 0xD7, 0x60);
 pub const WARN: Color32 = Color32::from_rgb(0xF5, 0xB9, 0x42);
 pub const DANGER: Color32 = Color32::from_rgb(0xFF, 0x6B, 0x6B);
 pub const INFO: Color32 = Color32::from_rgb(0x5B, 0xB8, 0xFF);
 
-/// Accent at 14% over `SURFACE`. Opaque.
-pub const ACCENT_SOFT: Color32 = Color32::from_rgb(0x20, 0x20, 0x42);
-/// Accent at 40% over `SURFACE`. Opaque hero/selection edge.
-pub const ACCENT_LINE: Color32 = Color32::from_rgb(0x35, 0x30, 0x77);
+/// Green at 14% over `#121212`. Opaque.
+pub const ACCENT_SOFT: Color32 = Color32::from_rgb(0x14, 0x2E, 0x1D);
+/// Green at 40% over `#121212`. Opaque selection edge.
+pub const ACCENT_LINE: Color32 = Color32::from_rgb(0x17, 0x61, 0x31);
 /// Danger at 14% over `SURFACE`.
 pub const DANGER_SOFT: Color32 = Color32::from_rgb(0x36, 0x23, 0x30);
 /// Danger at 40% over `SURFACE`.
@@ -90,18 +88,18 @@ pub const BREAK_NARROW: f32 = 1100.0;
 pub const SHADOW_BLUR: f32 = 16.0;
 pub const SHADOW_ALPHA: u8 = 90;
 
-/// Unified content surfaces (cards, headers). White primary text ~16:1.
-pub const SURFACE_CARD: Color32 = Color32::from_rgb(0x2A, 0x10, 0x58);
-pub const SURFACE_LINE: Color32 = Color32::from_rgb(0xC4, 0xB4, 0xE8);
-pub const INPUT_FILL: Color32 = Color32::from_rgb(0x1E, 0x0C, 0x42);
+/// Cards sit one step above the window, like Spotify panels.
+pub const SURFACE_CARD: Color32 = Color32::from_rgb(0x18, 0x18, 0x18);
+pub const SURFACE_LINE: Color32 = Color32::from_rgb(0x2A, 0x2A, 0x2A);
+pub const INPUT_FILL: Color32 = Color32::from_rgb(0x2A, 0x2A, 0x2A);
 
 /// Home cards (alias of `SURFACE_CARD`).
 pub const CARD_HOME: Color32 = SURFACE_CARD;
-pub const CARD_MUTED: Color32 = Color32::from_rgb(0xE4, 0xD8, 0xFA);
+pub const CARD_MUTED: Color32 = Color32::from_rgb(0xB3, 0xB3, 0xB3);
 pub const CARD_LINE: Color32 = SURFACE_LINE;
-pub const BTN_HOVER: Color32 = Color32::from_rgb(0xE8, 0xE0, 0xF8);
-pub const BTN_PRESSED: Color32 = Color32::from_rgb(0xC8, 0xB8, 0xE4);
-pub const BTN_DISABLED: Color32 = Color32::from_rgb(0x4E, 0x3E, 0x78);
+pub const BTN_HOVER: Color32 = Color32::from_rgb(0x3B, 0xE4, 0x77);
+pub const BTN_PRESSED: Color32 = Color32::from_rgb(0x1D, 0xB9, 0x54);
+pub const BTN_DISABLED: Color32 = Color32::from_rgb(0x53, 0x53, 0x53);
 
 pub const CTA_H: f32 = 48.0;
 
@@ -115,7 +113,7 @@ pub fn glass_line() -> Color32 {
     Color32::from_rgba_unmultiplied(255, 255, 255, 78)
 }
 
-/// Full-bleed module gradients. Stops are original Sable hues.
+/// Legacy per-screen stops. Chrome uses the green/black pair.
 pub const GRAD_TEAL_TOP: Color32 = Color32::from_rgb(0x12, 0x86, 0x80);
 pub const GRAD_TEAL_BOTTOM: Color32 = Color32::from_rgb(0x04, 0x3A, 0x44);
 pub const GRAD_TEAL_ACCENT: Color32 = Color32::from_rgb(0x3E, 0xF0, 0xD0);
@@ -128,17 +126,17 @@ pub const GRAD_ORANGE_TOP: Color32 = Color32::from_rgb(0xE0, 0x72, 0x18);
 pub const GRAD_ORANGE_BOTTOM: Color32 = Color32::from_rgb(0x7A, 0x28, 0x06);
 pub const GRAD_ORANGE_ACCENT: Color32 = Color32::from_rgb(0xFF, 0xC2, 0x70);
 
-pub const GRAD_PURPLE_TOP: Color32 = Color32::from_rgb(0x6E, 0x32, 0xD4);
-pub const GRAD_PURPLE_BOTTOM: Color32 = Color32::from_rgb(0x28, 0x0C, 0x58);
-pub const GRAD_PURPLE_ACCENT: Color32 = Color32::from_rgb(0xD0, 0xA0, 0xFF);
+pub const GRAD_PURPLE_TOP: Color32 = Color32::from_rgb(0x1D, 0xB9, 0x54);
+pub const GRAD_PURPLE_BOTTOM: Color32 = Color32::from_rgb(0x00, 0x00, 0x00);
+pub const GRAD_PURPLE_ACCENT: Color32 = ACCENT;
 
-pub const GRAD_NEUTRAL_TOP: Color32 = Color32::from_rgb(0x22, 0x20, 0x38);
-pub const GRAD_NEUTRAL_BOTTOM: Color32 = Color32::from_rgb(0x0C, 0x0B, 0x16);
+pub const GRAD_NEUTRAL_TOP: Color32 = Color32::from_rgb(0x18, 0x18, 0x18);
+pub const GRAD_NEUTRAL_BOTTOM: Color32 = Color32::from_rgb(0x00, 0x00, 0x00);
 pub const GRAD_NEUTRAL_ACCENT: Color32 = ACCENT;
 
-pub const GRAD_GREEN_TOP: Color32 = Color32::from_rgb(0x1C, 0x86, 0x4A);
-pub const GRAD_GREEN_BOTTOM: Color32 = Color32::from_rgb(0x0A, 0x36, 0x24);
-pub const GRAD_GREEN_ACCENT: Color32 = Color32::from_rgb(0x86, 0xF0, 0xB0);
+pub const GRAD_GREEN_TOP: Color32 = Color32::from_rgb(0x1D, 0xB9, 0x54);
+pub const GRAD_GREEN_BOTTOM: Color32 = Color32::from_rgb(0x00, 0x00, 0x00);
+pub const GRAD_GREEN_ACCENT: Color32 = ACCENT;
 
 pub const GRAD_SLATE_TOP: Color32 = Color32::from_rgb(0x2A, 0x48, 0x86);
 pub const GRAD_SLATE_BOTTOM: Color32 = Color32::from_rgb(0x10, 0x1A, 0x36);
@@ -156,8 +154,8 @@ pub const GRAD_INDIGO_TOP: Color32 = Color32::from_rgb(0x36, 0x2C, 0x84);
 pub const GRAD_INDIGO_BOTTOM: Color32 = Color32::from_rgb(0x12, 0x0E, 0x34);
 pub const GRAD_INDIGO_ACCENT: Color32 = Color32::from_rgb(0xC8, 0xBC, 0xFF);
 
-/// Ink for labels sitting on a white pill.
-pub const INK: Color32 = Color32::from_rgb(0x1A, 0x12, 0x32);
+/// Black type on green pills. Spotify puts black on `#1ED760`, not white.
+pub const INK: Color32 = Color32::from_rgb(0x00, 0x00, 0x00);
 
 pub fn lh(size: f32) -> f32 {
     size * LINE_HEIGHT
