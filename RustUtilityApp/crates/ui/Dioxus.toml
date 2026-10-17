@@ -1,0 +1,6 @@
+[application]
+name = "Clean Your Mac"
+asset_dir = "assets"
+
+[web.app]
+title = "Clean Your Mac"

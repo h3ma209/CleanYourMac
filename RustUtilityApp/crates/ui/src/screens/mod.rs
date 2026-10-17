@@ -1,0 +1,21 @@
+mod apps;
+mod assistant;
+mod care;
+mod cleanup;
+mod cloud;
+mod clutter;
+mod malware;
+mod performance;
+mod protection;
+mod space;
+
+pub use apps::AppsScreen;
+pub use assistant::AssistantScreen;
+pub use care::CareScreen;
+pub use cleanup::CleanupScreen;
+pub use cloud::CloudScreen;
+pub use clutter::ClutterScreen;
+pub use malware::MalwareScreen;
+pub use performance::PerformanceScreen;
+pub use protection::ProtectionScreen;
+pub use space::SpaceScreen;

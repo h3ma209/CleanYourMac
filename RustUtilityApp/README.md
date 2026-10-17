@@ -49,7 +49,7 @@ open dist/CleanYourMac-*.dmg
 
 ```text
 crates/engine   scan, trash plan, disk map
-crates/ui       the window
+crates/ui       Dioxus desktop window
 ```
 
 ## Publish a download

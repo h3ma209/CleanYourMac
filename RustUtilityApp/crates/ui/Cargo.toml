@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "Mac app for disk space, caches, and downloads you choose to trash"
 license = "MIT"
-keywords = ["macos", "disk-usage", "cleanup", "egui"]
+keywords = ["macos", "disk-usage", "cleanup", "dioxus"]
 categories = ["gui"]
 
 [dependencies]
-eframe = "0.29"
+dioxus = { version = "0.6", features = ["desktop"] }
 engine = { path = "../engine" }
-tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time"] }
