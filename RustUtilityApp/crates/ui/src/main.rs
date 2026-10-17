@@ -26,7 +26,6 @@ fn main() {
 }
 
 const CSS: Asset = asset!("/assets/styles.css");
-// Keep font files in the asset graph so @font-face URLs resolve in the desktop bundle.
 const _FONT_REGULAR: Asset = asset!("/assets/CleanYourMac-Regular.ttf");
 const _FONT_SEMIBOLD: Asset = asset!("/assets/CleanYourMac-SemiBold.ttf");
 
@@ -40,25 +39,35 @@ fn App() -> Element {
 
     let screen = state.read().screen;
     let busy = state.read().busy;
+    // Remount stage on nav so entrance motion plays each screen.
+    let stage_key = format!("{screen:?}");
 
     rsx! {
         document::Stylesheet { href: CSS }
         div { class: "app",
+            div { class: "app-ambient", aria_hidden: "true",
+                div { class: "blob blob-a" }
+                div { class: "blob blob-b" }
+                div { class: "blob blob-c" }
+            }
+            div { class: "app-noise", aria_hidden: "true" }
             Sidebar { state }
             main { class: "main",
                 div { class: if busy { "busy-strip on" } else { "busy-strip" } }
                 div { class: "main-scroll",
-                    match screen {
-                        Screen::Care => rsx! { CareScreen { state } },
-                        Screen::Cleanup => rsx! { CleanupScreen { state } },
-                        Screen::Apps => rsx! { AppsScreen { state } },
-                        Screen::Performance => rsx! { PerformanceScreen { state } },
-                        Screen::Protection => rsx! { ProtectionScreen { state } },
-                        Screen::Malware => rsx! { MalwareScreen { state } },
-                        Screen::Clutter => rsx! { ClutterScreen { state } },
-                        Screen::Space => rsx! { SpaceScreen { state } },
-                        Screen::Cloud => rsx! { CloudScreen { state } },
-                        Screen::Assistant => rsx! { AssistantScreen { state } },
+                    div { class: "screen-stage", key: "{stage_key}",
+                        match screen {
+                            Screen::Care => rsx! { CareScreen { state } },
+                            Screen::Cleanup => rsx! { CleanupScreen { state } },
+                            Screen::Apps => rsx! { AppsScreen { state } },
+                            Screen::Performance => rsx! { PerformanceScreen { state } },
+                            Screen::Protection => rsx! { ProtectionScreen { state } },
+                            Screen::Malware => rsx! { MalwareScreen { state } },
+                            Screen::Clutter => rsx! { ClutterScreen { state } },
+                            Screen::Space => rsx! { SpaceScreen { state } },
+                            Screen::Cloud => rsx! { CloudScreen { state } },
+                            Screen::Assistant => rsx! { AssistantScreen { state } },
+                        }
                     }
                 }
             }

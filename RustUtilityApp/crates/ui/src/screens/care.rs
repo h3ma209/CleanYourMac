@@ -83,20 +83,20 @@ pub fn CareScreen(mut state: Signal<AppState>) -> Element {
 
     rsx! {
         NoticeBanner { state }
-        div { class: "page-kicker", "Home" }
-        h1 { class: "page-title", "Your tasks are ready" }
-        p { class: "page-sub", "Pick what to run, then clean in one pass. Everything that deletes asks first." }
+        div { class: "page-kicker", "Good to go" }
+        h1 { class: "page-title", "Jump back in" }
+        p { class: "page-sub", "Queue a mix of cleanup jobs. Hit play when you are ready — nothing leaves without a confirm." }
 
-        div { class: "summary-bar",
-            span { "Last scan: " strong { "{age}" } }
-            span { strong { "{size}" } " reclaimable" }
-            span { strong { "{selected}" } " tasks selected" }
+        div { class: "summary-bar glass",
+            span { "Last hit: " strong { "{age}" } }
+            span { strong { "{size}" } " ready to reclaim" }
+            span { strong { "{selected}" } " in queue" }
         }
 
         if loading {
             div { class: "card loading",
                 div { class: "spinner" }
-                "Checking your Mac..."
+                "Cueing your Mac…"
             }
         } else {
             div { class: "grid grid-3",
@@ -153,7 +153,7 @@ pub fn CareScreen(mut state: Signal<AppState>) -> Element {
                 class: "btn btn-primary btn-lg",
                 disabled: busy || selected == 0,
                 onclick: move |_| run_checked_care(state),
-                if busy { "Running…" } else { "Run selected" }
+                if busy { "Playing…" } else { "Play queue" }
             }
         }
     }
@@ -171,11 +171,11 @@ fn CareTask(
 ) -> Element {
     let picked = state.read().care_picks.contains(&screen);
     let class = if selectable && picked {
-        "card interactive task-card selectable selected"
+        "card interactive task-card selectable selected glass"
     } else if selectable {
-        "card interactive task-card selectable"
+        "card interactive task-card selectable glass"
     } else {
-        "card task-card"
+        "card task-card glass"
     };
     let metric_style = if success {
         "color: var(--success)"
@@ -183,9 +183,9 @@ fn CareTask(
         ""
     };
     let action = if screen == Screen::Apps {
-        "Browse"
+        "Open"
     } else {
-        "Review"
+        "Go to"
     };
 
     rsx! {
@@ -203,7 +203,13 @@ fn CareTask(
                 }
             },
             div { class: "task-top",
-                div { class: "task-icon", "{screen.icon()}" }
+                img {
+                    class: "task-icon",
+                    src: screen.icon(),
+                    alt: "",
+                    width: "42",
+                    height: "42",
+                }
                 if selectable {
                     div { class: if picked { "task-check on" } else { "task-check" },
                         if picked { "✓" }

@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 100 100" role="img" aria-label="Space Lens glass icon">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b5a0ff" stop-opacity=".62"/>
+      <stop offset=".48" stop-color="#9144dc" stop-opacity=".43"/>
+      <stop offset="1" stop-color="#b5a0ff" stop-opacity=".62"/>
+    </linearGradient>
+    <linearGradient id="glyph" x1="0" y1="0" x2=".2" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#bfe4ff"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".48"/>
+      <stop offset=".42" stop-color="#ffffff" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/>
+      <feOffset dy="3" result="offset"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".32"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="clip"><rect x="5" y="5" width="90" height="90" rx="22"/></clipPath>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="5" y="5" width="90" height="90" rx="22" fill="url(#tile)" stroke="#e6f3ff" stroke-opacity=".78" stroke-width="1.8"/>
+    <g clip-path="url(#clip)">
+      <path d="M2 29 Q26 1 59 4 Q82 6 99 25 V5 H5 Z" fill="url(#shine)"/>
+      <path d="M7 28 Q32 5 61 9" fill="none" stroke="#ffffff" stroke-opacity=".58" stroke-width="1.5" stroke-linecap="round"/>
+      <circle cx="83" cy="82" r="28" fill="#b5a0ff" opacity=".13"/>
+    </g>
+    <circle cx="46" cy="52" r="24" fill="url(#glyph)" stroke="#f3eaff" stroke-width="3"/><circle cx="46" cy="52" r="14" fill="none" stroke="#d9ceff" stroke-width="3"/><circle cx="46" cy="52" r="6" fill="#c6baff"/><path d="M68 25 L73 35 L84 40 L73 45 L68 55 L63 45 L52 40 L63 35 Z" fill="#f4efff" stroke="#fff" stroke-width="1.5"/>
+  </g>
+</svg>

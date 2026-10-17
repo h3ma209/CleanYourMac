@@ -3,11 +3,23 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use dioxus::prelude::*;
 use engine::{
     folder_access, AccessStatus, CareReport, CloudFolder, Detection, InstalledApp, JunkRoot,
     LargeFile, LaunchAgent, LeftoverHit, MachineSample, SpaceReport, SpaceVolumeScan, ThreatReport,
     ExecutionControl,
 };
+
+const ICON_HOME: Asset = asset!("/assets/sidebar/home.svg");
+const ICON_FREE_UP_SPACE: Asset = asset!("/assets/sidebar/free-up-space.svg");
+const ICON_APPS: Asset = asset!("/assets/sidebar/apps.svg");
+const ICON_TUNE_UP: Asset = asset!("/assets/sidebar/tune-up.svg");
+const ICON_FILE_FINDER: Asset = asset!("/assets/sidebar/file-finder.svg");
+const ICON_THREAT_SCAN: Asset = asset!("/assets/sidebar/threat-scan.svg");
+const ICON_BIG_DOWNLOADS: Asset = asset!("/assets/sidebar/big-downloads.svg");
+const ICON_SPACE_LENS: Asset = asset!("/assets/sidebar/space-lens.svg");
+const ICON_CLOUD_STORAGE: Asset = asset!("/assets/sidebar/cloud-storage.svg");
+const ICON_NOW_PLAYING: Asset = asset!("/assets/sidebar/now-playing.svg");
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Screen {
@@ -26,7 +38,7 @@ pub enum Screen {
 impl Screen {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Care => "Overview",
+            Self::Care => "Home",
             Self::Cleanup => "Free Up Space",
             Self::Apps => "Apps",
             Self::Performance => "Tune-Up",
@@ -35,7 +47,7 @@ impl Screen {
             Self::Clutter => "Big Downloads",
             Self::Space => "Space Lens",
             Self::Cloud => "Cloud Storage",
-            Self::Assistant => "System Monitor",
+            Self::Assistant => "Now Playing",
         }
     }
 
@@ -62,18 +74,18 @@ impl Screen {
         )
     }
 
-    pub fn icon(self) -> &'static str {
+    pub fn icon(self) -> Asset {
         match self {
-            Self::Care => "⌂",
-            Self::Cleanup => "◇",
-            Self::Apps => "▦",
-            Self::Performance => "⚡",
-            Self::Protection => "⌕",
-            Self::Malware => "◎",
-            Self::Clutter => "↓",
-            Self::Space => "◉",
-            Self::Cloud => "☁",
-            Self::Assistant => "◉",
+            Self::Care => ICON_HOME,
+            Self::Cleanup => ICON_FREE_UP_SPACE,
+            Self::Apps => ICON_APPS,
+            Self::Performance => ICON_TUNE_UP,
+            Self::Protection => ICON_FILE_FINDER,
+            Self::Malware => ICON_THREAT_SCAN,
+            Self::Clutter => ICON_BIG_DOWNLOADS,
+            Self::Space => ICON_SPACE_LENS,
+            Self::Cloud => ICON_CLOUD_STORAGE,
+            Self::Assistant => ICON_NOW_PLAYING,
         }
     }
 }
@@ -251,9 +263,9 @@ impl AppState {
 
 pub fn rail_groups() -> [(&'static str, &'static [Screen]); 4] {
     [
-        ("Home", &[Screen::Care]),
+        ("Made for you", &[Screen::Care]),
         (
-            "Clean",
+            "Library",
             &[
                 Screen::Cleanup,
                 Screen::Clutter,
@@ -262,9 +274,9 @@ pub fn rail_groups() -> [(&'static str, &'static [Screen]); 4] {
             ],
         ),
         (
-            "Maintain",
+            "Your Mac",
             &[Screen::Apps, Screen::Performance, Screen::Assistant],
         ),
-        ("Protect", &[Screen::Protection, Screen::Malware]),
+        ("Safety", &[Screen::Protection, Screen::Malware]),
     ]
 }

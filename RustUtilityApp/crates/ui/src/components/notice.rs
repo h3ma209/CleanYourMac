@@ -14,7 +14,7 @@ pub fn NoticeBanner(mut state: Signal<AppState>) -> Element {
             button {
                 class: "btn btn-ghost",
                 onclick: move |_| state.write().notice = None,
-                "Dismiss"
+                "Got it"
             }
         }
     }

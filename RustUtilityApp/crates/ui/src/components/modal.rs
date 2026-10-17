@@ -34,7 +34,7 @@ pub fn ConfirmModal(mut state: Signal<AppState>) -> Element {
                     button {
                         class: "btn btn-secondary",
                         onclick: move |_| state.write().confirm = None,
-                        "Cancel"
+                        "Not now"
                     }
                 }
             }

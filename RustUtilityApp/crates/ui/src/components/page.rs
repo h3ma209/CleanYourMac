@@ -20,8 +20,8 @@ pub fn PageHeader(
     on_action: Option<EventHandler<()>>,
 ) -> Element {
     let (badge_class, badge_text) = match safety {
-        Safety::ReadOnly => ("safe", "Read-only — nothing on disk is changed"),
-        Safety::Trash => ("trash", "Moves to Trash — you can undo this"),
+        Safety::ReadOnly => ("safe", "Listen only — disk stays untouched"),
+        Safety::Trash => ("trash", "Goes to Trash — easy undo"),
         Safety::Admin => ("admin", "May ask for your Mac password"),
     };
 

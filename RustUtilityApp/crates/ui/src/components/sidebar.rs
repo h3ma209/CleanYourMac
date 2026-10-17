@@ -11,9 +11,9 @@ pub fn Sidebar(state: Signal<AppState>) -> Element {
     let (dot, label, hint) = if busy {
         ("busy", "Working", status)
     } else if granted {
-        ("ok", "Ready", "Full Disk Access on")
+        ("ok", "Ready to play", "Full access unlocked")
     } else {
-        ("warn", "Limited access", "Some folders need permission")
+        ("warn", "Limited mode", "Some folders need permission")
     };
 
     rsx! {
@@ -22,25 +22,31 @@ pub fn Sidebar(state: Signal<AppState>) -> Element {
                 div { class: "brand-mark", "C" }
                 div { class: "brand-text",
                     span { class: "brand-name", "Clean Your Mac" }
-                    span { class: "brand-sub", "Storage & care" }
+                    span { class: "brand-sub", "Your Mac, remixed" }
                 }
             }
             nav { class: "nav-groups",
                 for (group, items) in rail_groups() {
-                    div {
+                    div { class: "nav-group",
                         div { class: "nav-group-label", "{group}" }
                         for item in items.iter().copied() {
                             button {
                                 class: if item == screen { "nav-item active" } else { "nav-item" },
                                 onclick: move |_| state.write().go(item),
-                                span { class: "nav-icon", "{item.icon()}" }
+                                img {
+                                    class: "nav-icon",
+                                    src: item.icon(),
+                                    alt: "",
+                                    width: "22",
+                                    height: "22",
+                                }
                                 span { "{item.label()}" }
                             }
                         }
                     }
                 }
             }
-            div { class: "rail-foot",
+            div { class: "rail-foot glass",
                 span { class: "status-dot {dot}" }
                 div { class: "status-meta",
                     span { class: "status-label", "{label}" }

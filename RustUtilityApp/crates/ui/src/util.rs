@@ -122,10 +122,10 @@ pub fn gauge_class(fraction: f32) -> &'static str {
 
 pub fn screen_kicker(screen: Screen) -> &'static str {
     match screen {
-        Screen::Care => "Home",
-        Screen::Cleanup | Screen::Clutter | Screen::Space | Screen::Cloud => "Storage",
-        Screen::Apps | Screen::Performance => "Maintenance",
-        Screen::Protection | Screen::Malware => "Security",
-        Screen::Assistant => "Live",
+        Screen::Care => "Made for you",
+        Screen::Cleanup | Screen::Clutter | Screen::Space | Screen::Cloud => "Library",
+        Screen::Apps | Screen::Performance => "Your Mac",
+        Screen::Protection | Screen::Malware => "Safety",
+        Screen::Assistant => "Now playing",
     }
 }
