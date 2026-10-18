@@ -2,7 +2,7 @@
 name = "engine"
 version = "0.1.0"
 edition = "2021"
-description = "Disk scan and trash plan for Clean Your Mac"
+description = "Disk scan and trash plan for Sable"
 license = "MIT"
 keywords = ["macos", "disk-usage", "cleanup"]
 categories = ["os", "filesystem"]

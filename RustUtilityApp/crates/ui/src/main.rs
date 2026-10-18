@@ -17,7 +17,7 @@ fn main() {
         .with_cfg(
             Config::new().with_window(
                 WindowBuilder::new()
-                    .with_title("Clean Your Mac")
+                    .with_title("Sable")
                     .with_inner_size(LogicalSize::new(1180.0, 800.0))
                     .with_min_inner_size(LogicalSize::new(720.0, 520.0)),
             ),
@@ -26,8 +26,8 @@ fn main() {
 }
 
 const CSS: Asset = asset!("/assets/styles.css");
-const _FONT_REGULAR: Asset = asset!("/assets/CleanYourMac-Regular.ttf");
-const _FONT_SEMIBOLD: Asset = asset!("/assets/CleanYourMac-SemiBold.ttf");
+const _FONT_REGULAR: Asset = asset!("/assets/Sable-Regular.ttf");
+const _FONT_SEMIBOLD: Asset = asset!("/assets/Sable-SemiBold.ttf");
 
 #[component]
 fn App() -> Element {

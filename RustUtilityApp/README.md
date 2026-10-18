@@ -1,20 +1,20 @@
-# Clean Your Mac
+# Sable
 
 A Mac app that shows what uses your disk and moves caches, leftovers, and large downloads to the Trash only after you confirm.
 
 ## Install
 
-1. Open the [latest release](https://github.com/h3ma209/CleanYourMac/releases/latest).
+1. Open the [latest release](https://github.com/h3ma209/Sable/releases/latest).
 2. Download the disk image.
-   - Apple Silicon: `CleanYourMac-*-macos-arm64.dmg`
-   - Intel: `CleanYourMac-*-macos-x64.dmg`
+   - Apple Silicon: `Sable-*-macos-arm64.dmg`
+   - Intel: `Sable-*-macos-x64.dmg`
 3. Open the disk image.
-4. Drag **Clean Your Mac** onto **Applications**.
+4. Drag **Sable** onto **Applications**.
 5. Eject the disk image.
 
 The app is not notarized, so macOS blocks the first launch.
 
-1. In Applications, Control-click **Clean Your Mac**.
+1. In Applications, Control-click **Sable**.
 2. Choose **Open**, then choose **Open** again.
 
 Later launches are normal.
@@ -42,7 +42,7 @@ Rust 1.80 or newer. Run these from this folder.
 
 ```bash
 make package
-open dist/CleanYourMac-*.dmg
+open dist/Sable-*.dmg
 ```
 
 `make install` copies the app into `/Applications`. `make help` lists the other commands.

@@ -36,7 +36,7 @@ struct ScanTask {
     strategy: CloudScannerStrategy,
 }
 
-/// Full tree node. CleanMyMac keeps one `rootNode` on the representation view model
+/// Full tree node. Sable keeps one `rootNode` on the representation view model
 /// and drills down via `navigationHistory` without rescanning each folder.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SpaceEntity {

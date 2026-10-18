@@ -21,7 +21,7 @@ pub fn Sidebar(state: Signal<AppState>) -> Element {
             div { class: "brand",
                 div { class: "brand-mark", "C" }
                 div { class: "brand-text",
-                    span { class: "brand-name", "Clean Your Mac" }
+                    span { class: "brand-name", "Sable" }
                     span { class: "brand-sub", "Your Mac, remixed" }
                 }
             }

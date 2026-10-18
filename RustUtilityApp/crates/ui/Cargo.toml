@@ -1,5 +1,5 @@
 [package]
-name = "clean-your-mac"
+name = "sable"
 version = "0.1.0"
 edition = "2021"
 description = "Mac app for disk space, caches, and downloads you choose to trash"

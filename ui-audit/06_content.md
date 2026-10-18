@@ -180,7 +180,7 @@ Strings below are user-visible. Format placeholders stay as `{}`. Duplicate copi
 |---|---|
 | Checks a folder against a public list of malware file hashes from abuse.ch MalwareBazaar. A match is moved to the Trash only after you confirm. | `main.rs:1778` |
 | What this scan does not do | `main.rs:1784` |
-| It does not use CleanMyMac's signature database. It does not read browser cookies, history, passwords, or messages. It does not change camera, microphone, or other app permissions. It does not watch the network in the background. | `main.rs:1786` |
+| It does not use Sable's signature database. It does not read browser cookies, history, passwords, or messages. It does not change camera, microphone, or other app permissions. It does not watch the network in the background. | `main.rs:1786` |
 | Where should it look? | `main.rs:1798` |
 | Downloads, Desktop, Documents, Launch Agents | `main.rs:1802-1805` |
 | The first scan downloads the public hash list if the saved copy is missing or older than a day. Later scans reuse that copy. | `main.rs:1816` |

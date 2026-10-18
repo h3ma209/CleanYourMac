@@ -21,7 +21,7 @@ jobs:
         with:
           workspaces: RustUtilityApp
 
-      - name: Package Clean Your Mac.app
+      - name: Package Sable.app
         working-directory: RustUtilityApp
         run: make package
 

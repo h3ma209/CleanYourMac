@@ -593,7 +593,7 @@ fn space_scan_blocked_message(state: &AppState) -> Option<String> {
     let needs_fda = root == mac || (root.starts_with(&mac) && !root.starts_with(&state.home));
     if needs_fda && state.access != AccessStatus::Granted {
         Some(
-            "Full Disk Access is required to scan this drive. Open System Settings → Privacy & Security → Full Disk Access, enable Clean Your Mac, then press Scan again.".into(),
+            "Full Disk Access is required to scan this drive. Open System Settings → Privacy & Security → Full Disk Access, enable Sable, then press Scan again.".into(),
         )
     } else {
         None

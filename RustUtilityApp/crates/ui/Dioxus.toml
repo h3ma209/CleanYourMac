@@ -1,6 +1,6 @@
 [application]
-name = "Clean Your Mac"
+name = "Sable"
 asset_dir = "assets"
 
 [web.app]
-title = "Clean Your Mac"
+title = "Sable"

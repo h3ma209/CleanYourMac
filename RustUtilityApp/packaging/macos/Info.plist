@@ -5,17 +5,17 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
-	<string>CleanYourMac</string>
+	<string>Sable</string>
 	<key>CFBundleIconFile</key>
-	<string>CleanYourMac</string>
+	<string>Sable</string>
 	<key>CFBundleIdentifier</key>
-	<string>app.cleanyourmac.mac</string>
+	<string>app.sable.mac</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Clean Your Mac</string>
+	<string>Sable</string>
 	<key>CFBundleDisplayName</key>
-	<string>Clean Your Mac</string>
+	<string>Sable</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -29,12 +29,12 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSDesktopFolderUsageDescription</key>
-	<string>Clean Your Mac reads Desktop to measure what uses space. Files move only if you confirm.</string>
+	<string>Sable reads Desktop to measure what uses space. Files move only if you confirm.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
-	<string>Clean Your Mac reads Documents to measure what uses space. Files move only if you confirm.</string>
+	<string>Sable reads Documents to measure what uses space. Files move only if you confirm.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
-	<string>Clean Your Mac reads Downloads to measure what uses space. Files move only if you confirm.</string>
+	<string>Sable reads Downloads to measure what uses space. Files move only if you confirm.</string>
 	<key>NSRemovableVolumesUsageDescription</key>
-	<string>Clean Your Mac reads attached disks when you scan them.</string>
+	<string>Sable reads attached disks when you scan them.</string>
 </dict>
 </plist>
